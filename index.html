@@ -1,0 +1,1675 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.9/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid;
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+                try {
+                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                    var firstSheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[firstSheetName];
+                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                    var filteredData = jsonData.filter(row => row.some(filledCell));
+                    var headerRowIndex = filteredData.findIndex((row, index) =>
+                      row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                    );
+                    if (headerRowIndex === -1 || headerRowIndex > 25) {
+                      headerRowIndex = 0;
+                    }
+                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                    return csv;
+                } catch (e) {
+                    console.error(e);
+                    return "";
+                }
+            }
+            return gk_fileData[filename] || "";
+        }
+    </script>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const colorPalette = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD',
+            '#D4A5A5', '#9B59B6', '#E67E22', '#7F8C8D', '#3498DB'
+        ];
+
+        const stringToColor = (str, index) => colorPalette[index % colorPalette.length];
+
+        const calculatePortfolioValue = (transactions) => {
+            return transactions.reduce((total, t) => {
+                if (!t.salePrice) {
+                    return total + t.quantity * t.purchasePrice;
+                }
+                return total;
+            }, 0);
+        };
+
+        const calculateProfitLoss = (transactions) => {
+            return transactions.reduce((total, t) => {
+                if (t.salePrice) {
+                    return total + (t.salePrice - t.purchasePrice) * t.quantity;
+                }
+                return total;
+            }, 0);
+        };
+
+        const calculateProfitLossNet = (transactions) => {
+            return calculateProfitLoss(transactions) * (1 - 0.19);
+        };
+
+        const PortfolioManager = () => {
+            const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+            const [portfolios, setPortfolios] = useState(() => {
+                try {
+                    const savedPortfolios = localStorage.getItem('portfolios');
+                    return savedPortfolios ? JSON.parse(savedPortfolios) : [];
+                } catch (e) {
+                    console.error('Błąd ładowania portfeli z localStorage:', e);
+                    return [];
+                }
+            });
+            const [capital, setCapital] = useState(() => {
+                try {
+                    const savedCapital = localStorage.getItem('capital');
+                    return savedCapital ? JSON.parse(savedCapital) : { PLN: 0, USD: 0 };
+                } catch (e) {
+                    console.error('Błąd ładowania kapitału z localStorage:', e);
+                    return { PLN: 0, USD: 0 };
+                }
+            });
+            const [manualExchangeRate, setManualExchangeRate] = useState(() => {
+                try {
+                    const savedRate = localStorage.getItem('manualExchangeRate');
+                    return savedRate ? parseFloat(savedRate) : null;
+                } catch (e) {
+                    console.error('Błąd ładowania kursu z localStorage:', e);
+                    return null;
+                }
+            });
+            const [newPortfolioName, setNewPortfolioName] = useState('');
+            const [editPortfolioId, setEditPortfolioId] = useState(null);
+            const [editPortfolioName, setEditPortfolioName] = useState('');
+            const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
+            const [error, setError] = useState('');
+            const [showAddCapitalModal, setShowAddCapitalModal] = useState(false);
+            const [showSubtractCapitalModal, setShowSubtractCapitalModal] = useState(false);
+            const [showEditCapitalModal, setShowEditCapitalModal] = useState(false);
+            const [addCapitalPLN, setAddCapitalPLN] = useState('');
+            const [addCapitalUSD, setAddCapitalUSD] = useState('');
+            const [subtractCapitalPLN, setSubtractCapitalPLN] = useState('');
+            const [subtractCapitalUSD, setSubtractCapitalUSD] = useState('');
+            const [editCapitalPLN, setEditCapitalPLN] = useState('');
+            const [editCapitalUSD, setEditCapitalUSD] = useState('');
+            const chartRef = useRef(null);
+            const chartInstanceRef = useRef(null);
+            const fileInputRef = useRef(null);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('portfolios', JSON.stringify(portfolios));
+                    localStorage.setItem('capital', JSON.stringify(capital));
+                    if (manualExchangeRate !== null) {
+                        localStorage.setItem('manualExchangeRate', manualExchangeRate.toString());
+                    }
+                } catch (e) {
+                    console.error('Błąd zapisu danych do localStorage:', e);
+                    setError('Nie udało się zapisać danych.');
+                }
+            }, [portfolios, capital, manualExchangeRate]);
+
+            useEffect(() => {
+                localStorage.setItem('theme', theme);
+                document.body.className = theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-black';
+            }, [theme]);
+
+            useEffect(() => {
+                if (chartRef.current && !selectedPortfolioId && portfolios.length > 0) {
+                    if (chartInstanceRef.current) {
+                        chartInstanceRef.current.destroy();
+                    }
+                    const ctx = chartRef.current.getContext('2d');
+                    const datasets = portfolios.map((portfolio, index) => ({
+                        label: portfolio.name,
+                        data: [
+                            portfolio.companies.reduce((sum, c) => c.currency === 'PLN' ? sum + calculatePortfolioValue(c.transactions) : sum, 0),
+                            portfolio.companies.reduce((sum, c) => c.currency === 'USD' ? sum + calculatePortfolioValue(c.transactions) : sum, 0)
+                        ],
+                        backgroundColor: stringToColor(portfolio.name, index),
+                        borderColor: stringToColor(portfolio.name, index),
+                        borderWidth: 1
+                    }));
+
+                    Chart.register(ChartDataLabels);
+                    chartInstanceRef.current = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['PLN', 'USD'],
+                            datasets
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { position: 'top', labels: { color: theme === 'dark' ? '#fff' : '#000' } },
+                                title: { display: true, text: 'Wartość portfeli', color: theme === 'dark' ? '#fff' : '#000' },
+                                datalabels: {
+                                    color: theme === 'dark' ? '#fff' : '#000',
+                                    formatter: (value) => value.toFixed(2)
+                                }
+                            },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { color: theme === 'dark' ? '#fff' : '#000' } },
+                                x: { ticks: { color: theme === 'dark' ? '#fff' : '#000' } }
+                            }
+                        }
+                    });
+                }
+                return () => {
+                    if (chartInstanceRef.current) {
+                        chartInstanceRef.current.destroy();
+                    }
+                };
+            }, [portfolios, theme, selectedPortfolioId]);
+
+            const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
+
+            const openAddCapitalModal = () => {
+                setShowAddCapitalModal(true);
+                setAddCapitalPLN('');
+                setAddCapitalUSD('');
+            };
+
+            const closeAddCapitalModal = () => {
+                setShowAddCapitalModal(false);
+                setAddCapitalPLN('');
+                setAddCapitalUSD('');
+                setError('');
+            };
+
+            const addCapital = () => {
+                const pln = addCapitalPLN === '' ? 0 : parseFloat(addCapitalPLN) || 0;
+                const usd = addCapitalUSD === '' ? 0 : parseFloat(addCapitalUSD) || 0;
+
+                if (pln < 0 || usd < 0) {
+                    setError('Kwoty nie mogą być ujemne.');
+                    return;
+                }
+
+                setCapital({
+                    PLN: capital.PLN + pln,
+                    USD: capital.USD + usd
+                });
+                closeAddCapitalModal();
+            };
+
+            const openSubtractCapitalModal = () => {
+                setShowSubtractCapitalModal(true);
+                setSubtractCapitalPLN('');
+                setSubtractCapitalUSD('');
+            };
+
+            const closeSubtractCapitalModal = () => {
+                setShowSubtractCapitalModal(false);
+                setSubtractCapitalPLN('');
+                setSubtractCapitalUSD('');
+                setError('');
+            };
+
+            const subtractCapital = () => {
+                const pln = subtractCapitalPLN === '' ? 0 : parseFloat(subtractCapitalPLN) || 0;
+                const usd = subtractCapitalUSD === '' ? 0 : parseFloat(subtractCapitalUSD) || 0;
+
+                if (pln < 0 || usd < 0) {
+                    setError('Kwoty nie mogą być ujemne.');
+                    return;
+                }
+                if (pln > capital.PLN || usd > capital.USD) {
+                    setError('Nie można odjąć więcej niż obecny kapitał.');
+                    return;
+                }
+
+                setCapital({
+                    PLN: capital.PLN - pln,
+                    USD: capital.USD - usd
+                });
+                closeSubtractCapitalModal();
+            };
+
+            const openEditCapitalModal = () => {
+                setShowEditCapitalModal(true);
+                setEditCapitalPLN(capital.PLN.toString());
+                setEditCapitalUSD(capital.USD.toString());
+            };
+
+            const closeEditCapitalModal = () => {
+                setShowEditCapitalModal(false);
+                setEditCapitalPLN('');
+                setEditCapitalUSD('');
+                setError('');
+            };
+
+            const editCapital = () => {
+                const pln = editCapitalPLN === '' ? 0 : parseFloat(editCapitalPLN) || 0;
+                const usd = editCapitalUSD === '' ? 0 : parseFloat(editCapitalUSD) || 0;
+
+                if (pln < 0 || usd < 0) {
+                    setError('Kwoty nie mogą być ujemne.');
+                    return;
+                }
+
+                setCapital({
+                    PLN: pln,
+                    USD: usd
+                });
+                closeEditCapitalModal();
+            };
+
+            const handleExchangeRateChange = (value) => {
+
+            const fetchExchangeRateFromNBP = async () => {
+                try {
+                    const response = await fetch("https://api.nbp.pl/api/exchangerates/rates/A/USD/?format=json");
+                    if (!response.ok) throw new Error("Błąd pobierania danych");
+                    const data = await response.json();
+                    const rate = data?.rates?.[0]?.mid;
+                    if (rate) {
+                        setManualExchangeRate(rate);
+                        localStorage.setItem('manualExchangeRate', rate.toString());
+                        setError('');
+                    } else {
+                        throw new Error("Brak kursu w odpowiedzi");
+                    }
+                } catch (error) {
+                    console.error("Błąd pobierania kursu USD/PLN:", error);
+                    setError("Nie udało się pobrać kursu USD/PLN z NBP");
+                }
+            };
+                const rate = value === '' ? null : parseFloat(value);
+                if (rate !== null && (isNaN(rate) || rate <= 0)) {
+                    setError('Kurs USD/PLN musi być większy od zera.');
+                    return;
+                }
+                setManualExchangeRate(rate);
+                setError('');
+            };
+
+            const addPortfolio = () => {
+                const trimmedName = newPortfolioName.trim();
+                if (!trimmedName) {
+                    setError('Nazwa portfela nie może być pusta.');
+                    return;
+                }
+                if (portfolios.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
+                    setError('Portfel o tej nazwie już istnieje.');
+                    return;
+                }
+                setPortfolios([...portfolios, { id: Date.now(), name: trimmedName, companies: [] }]);
+                setNewPortfolioName('');
+                setError('');
+            };
+
+            const startEditPortfolio = (portfolio) => {
+                setEditPortfolioId(portfolio.id);
+                setEditPortfolioName(portfolio.name);
+            };
+
+            const saveEditPortfolio = () => {
+                const trimmedName = editPortfolioName.trim();
+                if (!trimmedName) {
+                    setError('Nazwa portfela nie może być pusta.');
+                    return;
+                }
+                if (portfolios.some(p => p.name.toLowerCase() === trimmedName.toLowerCase() && p.id !== editPortfolioId)) {
+                    setError('Portfel o tej nazwie już istnieje.');
+                    return;
+                }
+                setPortfolios(portfolios.map(p =>
+                    p.id === editPortfolioId ? { ...p, name: trimmedName } : p
+                ));
+                setEditPortfolioId(null);
+                setEditPortfolioName('');
+                setError('');
+            };
+
+            const cancelEditPortfolio = () => {
+                setEditPortfolioId(null);
+                setEditPortfolioName('');
+                setError('');
+            };
+
+            const deletePortfolio = (portfolioId) => {
+                setPortfolios(portfolios.filter(p => p.id !== portfolioId));
+                if (selectedPortfolioId === portfolioId) setSelectedPortfolioId(null);
+            };
+
+            const getPortfolioSummary = () => {
+                const summary = { PLN: { value: 0, profit: 0, profitNet: 0 }, USD: { value: 0, profit: 0, profitNet: 0 } };
+                portfolios.forEach(portfolio => {
+                    portfolio.companies.forEach(company => {
+                        const currency = company.currency || 'PLN';
+                        summary[currency].value += calculatePortfolioValue(company.transactions);
+                        const profit = calculateProfitLoss(company.transactions);
+                        summary[currency].profit += profit;
+                        summary[currency].profitNet += profit * (1 - 0.19);
+                    });
+                });
+                const totalCapitalPLN = capital.PLN + (manualExchangeRate ? capital.USD * manualExchangeRate : 0);
+                const totalValuePLN = summary.PLN.value + (manualExchangeRate ? summary.USD.value * manualExchangeRate : 0);
+                return { ...summary, totalCapitalPLN, totalValuePLN };
+            };
+
+            const exportData = () => {
+                const dataStr = JSON.stringify(portfolios, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'baza_portfeli.json';
+                link.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const importData = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (!Array.isArray(importedData)) {
+                            setError('Nieprawidłowy format pliku.');
+                            return;
+                        }
+                        setPortfolios(importedData);
+                        setError('');
+                    } catch (e) {
+                        setError('Błąd wczytywania pliku JSON.');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            const triggerFileInput = () => {
+                fileInputRef.current.click();
+            };
+
+            const summary = getPortfolioSummary();
+
+            return (
+                <div className={`container mx-auto p-4 ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h1 className="text-2xl font-bold">GT</h1>
+                        <button
+                            onClick={toggleTheme}
+                            className={`p-2 rounded ${theme === 'dark' ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-white'}`}
+                        >
+                            {theme === 'dark' ? '☀️ Jasny' : '🌙 Ciemny'}
+                        </button>
+                    </div>
+                    {error && <p className="text-red-500 mb-4">{error}</p>}
+                    {selectedPortfolioId ? (
+                        <PortfolioView
+                            portfolioId={selectedPortfolioId}
+                            portfolios={portfolios}
+                            setPortfolios={setPortfolios}
+                            goBack={() => setSelectedPortfolioId(null)}
+                            theme={theme}
+                            capital={capital}
+                            exchangeRate={manualExchangeRate}
+                        />
+                    ) : (
+                        <div>
+                            <div className="mb-4">
+                                <h2 className="text-xl font-semibold mb-2">Kapitał całkowity</h2>
+                                <div className="flex gap-4 items-center flex-wrap">
+                                    <div>
+                                        <label className="block mb-1 text-sm font-medium">Kapitał całkowity PLN</label>
+                                        <input
+                                            type="text"
+                                            value={capital.PLN.toFixed(2)}
+                                            readOnly
+                                            className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-200 text-black border-gray-300'}`}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block mb-1 text-sm font-medium">Kapitał całkowity USD</label>
+                                        <input
+                                            type="text"
+                                            value={capital.USD.toFixed(2)}
+                                            readOnly
+                                            className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-200 text-black border-gray-300'}`}
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={openAddCapitalModal}
+                                        className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                                    >
+                                        Dodaj kapitał
+                                    </button>
+                                    <button
+                                        onClick={openSubtractCapitalModal}
+                                        className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                                    >
+                                        Odejmij kapitał
+                                    </button>
+                                    <button
+                                        onClick={openEditCapitalModal}
+                                        className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                                    >
+                                        Edytuj kapitał
+                                    </button>
+                                    <div>
+                                        <label className="block mb-1 text-sm font-medium">Kurs USD/PLN</label>
+                                        <input
+                                            type="number"
+                                            value={manualExchangeRate || ''}
+                                            onChange={(e) => handleExchangeRateChange(e.target.value)}
+                                            placeholder="Wprowadź kurs"
+                                            className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                            min="0"
+                                            step="0.0001"
+                                        />
+<button
+    onClick={() => fetchExchangeRateFromNBP()}
+    className={`mt-1 ml-2 p-2 rounded ${theme === 'dark' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-500 hover:bg-indigo-600'} text-white`}
+>
+    🔄 Odśwież kurs USD/PLN
+</button>
+
+                                    </div>
+                                </div>
+                            </div>
+                            {showAddCapitalModal && (
+                                <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`}>
+                                    <div className={`p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}>
+                                        <h2 className="text-xl font-semibold mb-4">Dodaj kapitał</h2>
+                                        <div className="flex gap-4 mb-4">
+                                            <div>
+                                                <label className="block mb-1 text-sm font-medium">Kwota PLN</label>
+                                                <input
+                                                    type="number"
+                                                    value={addCapitalPLN}
+                                                    onChange={(e) => setAddCapitalPLN(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block mb-1 text-sm font-medium">Kwota USD</label>
+                                                <input
+                                                    type="number"
+                                                    value={addCapitalUSD}
+                                                    onChange={(e) => setAddCapitalUSD(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={addCapital}
+                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                            >
+                                                Dodaj
+                                            </button>
+                                            <button
+                                                onClick={closeAddCapitalModal}
+                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                                            >
+                                                Anuluj
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {showSubtractCapitalModal && (
+                                <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`}>
+                                    <div className={`p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}>
+                                        <h2 className="text-xl font-semibold mb-4">Odejmij kapitał</h2>
+                                        <div className="flex gap-4 mb-4">
+                                            <div>
+                                                <label className="block mb-1 text-sm font-medium">Kwota PLN (max {capital.PLN.toFixed(2)})</label>
+                                                <input
+                                                    type="number"
+                                                    value={subtractCapitalPLN}
+                                                    onChange={(e) => setSubtractCapitalPLN(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    min="0"
+                                                    max={capital.PLN}
+                                                    step="0.01"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block mb-1 text-sm font-medium">Kwota USD (max {capital.USD.toFixed(2)})</label>
+                                                <input
+                                                    type="number"
+                                                    value={subtractCapitalUSD}
+                                                    onChange={(e) => setSubtractCapitalUSD(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    min="0"
+                                                    max={capital.USD}
+                                                    step="0.01"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={subtractCapital}
+                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                            >
+                                                Odejmij
+                                            </button>
+                                            <button
+                                                onClick={closeSubtractCapitalModal}
+                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                                            >
+                                                Anuluj
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {showEditCapitalModal && (
+                                <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`}>
+                                    <div className={`p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}>
+                                        <h2 className="text-xl font-semibold mb-4">Edytuj kapitał</h2>
+                                        <div className="flex gap-4 mb-4">
+                                            <div>
+                                                <label className="block mb-1 text-sm font-medium">Kwota PLN</label>
+                                                <input
+                                                    type="number"
+                                                    value={editCapitalPLN}
+                                                    onChange={(e) => setEditCapitalPLN(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block mb-1 text-sm font-medium">Kwota USD</label>
+                                                <input
+                                                    type="number"
+                                                    value={editCapitalUSD}
+                                                    onChange={(e) => setEditCapitalUSD(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={editCapital}
+                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                            >
+                                                Zapisz
+                                            </button>
+                                            <button
+                                                onClick={closeEditCapitalModal}
+                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                                            >
+                                                Anuluj
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div className="mb-4">
+                                <h2 className="text-xl font-semibold mb-2">Podsumowanie</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                        <h3 className="font-bold">PLN</h3>
+                                        <p>Kapitał całkowity: {capital.PLN.toFixed(2)} zł</p>
+                                        <p>Wartość pozycji otwartych: {summary.PLN.value.toFixed(2)} zł</p>
+                                        <p className={summary.PLN.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                            Zysk brutto: {summary.PLN.profit.toFixed(2)} zł
+                                        </p>
+                                        <p className={summary.PLN.profitNet >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                            Zysk netto: {summary.PLN.profitNet.toFixed(2)} zł
+                                        </p>
+                                    </div>
+                                    <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                        <h3 className="font-bold">USD</h3>
+                                        <p>Kapitał całkowity: {capital.USD.toFixed(2)} $</p>
+                                        <p>Wartość pozycji otwartych: {summary.USD.value.toFixed(2)} $</p>
+                                        <p className={summary.USD.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                            Zysk brutto: {summary.USD.profit.toFixed(2)} $
+                                        </p>
+                                        <p className={summary.USD.profitNet >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                            Zysk netto: {summary.USD.profitNet.toFixed(2)} $
+                                        </p>
+                                    </div>
+                                    {manualExchangeRate && (
+                                        <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                            <h3 className="font-bold">Całkowite (PLN)</h3>
+                                            <p>Kurs USD/PLN: {manualExchangeRate.toFixed(4)}</p>
+                                            <p>Kapitał całkowity: {summary.totalCapitalPLN.toFixed(2)} zł</p>
+                                            <p>Wartość pozycji otwartych: {summary.totalValuePLN.toFixed(2)} zł</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="mb-4 flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newPortfolioName}
+                                    onChange={(e) => setNewPortfolioName(e.target.value)}
+                                    placeholder="Nazwa portfela"
+                                    className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                />
+                                <button
+                                    onClick={addPortfolio}
+                                    className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                                >
+                                    Dodaj portfel
+                                </button>
+                                <button
+                                    onClick={exportData}
+                                    className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                >
+                                    Eksport bazy
+                                </button>
+                                <button
+                                    onClick={triggerFileInput}
+                                    className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                >
+                                    Import bazy
+                                </button>
+                                <input
+                                    type="file"
+                                    accept=".json"
+                                    onChange={importData}
+                                    className="hidden"
+                                    ref={fileInputRef}
+                                />
+                            </div>
+                            <h2 className="text-xl font-semibold mb-2">Portfele</h2>
+                            {portfolios.length === 0 ? (
+                                <p>Brak portfeli. Dodaj nowy portfel.</p>
+                            ) : (
+                                portfolios.map((portfolio, index) => (
+                                    <div
+                                        key={portfolio.id}
+                                        className={`flex items-center p-4 rounded ${theme === 'dark' ? 'hover:bg-gray-800' : 'hover:bg-gray-100'}`}
+                                    >
+                                        {editPortfolioId === portfolio.id ? (
+                                            <>
+                                                <input
+                                                    type="text"
+                                                    value={editPortfolioName}
+                                                    onChange={(e) => setEditPortfolioName(e.target.value)}
+                                                    className={`border p-2 rounded flex-grow ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                />
+                                                <button
+                                                    onClick={saveEditPortfolio}
+                                                    className={`p-2 rounded ml-2 ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                                >
+                                                    Zapisz
+                                                </button>
+                                                <button
+                                                    onClick={cancelEditPortfolio}
+                                                    className={`p-2 rounded ml-2 ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                                                >
+                                                    Anuluj
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div
+                                                    className="w-3 h-3 mr-2 rounded"
+                                                    style={{ backgroundColor: stringToColor(portfolio.name, index) }}
+                                                ></div>
+                                                <button
+                                                    onClick={() => setSelectedPortfolioId(portfolio.id)}
+                                                    className="flex-grow text-left"
+                                                >
+                                                    {portfolio.name}
+                                                </button>
+                                                <button
+                                                    onClick={() => startEditPortfolio(portfolio)}
+                                                    className={`p-2 rounded mr-2 ${theme === 'dark' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}
+                                                >
+                                                    Edytuj
+                                                </button>
+                                                <button
+                                                    onClick={() => deletePortfolio(portfolio.id)}
+                                                    className={`p-2 rounded ${theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white`}
+                                                >
+                                                    Usuń
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                            {portfolios.length > 0 && (
+                                <div className="mt-4">
+                                    <h3 className="text-lg font-semibold mb-2">Wykres portfeli</h3>
+                                    <canvas ref={chartRef} className="max-w-full h-64"></canvas>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const PortfolioView = ({ portfolioId, portfolios, setPortfolios, goBack, theme, capital, exchangeRate }) => {
+            const portfolio = portfolios.find(p => p.id === portfolioId);
+            const [newCompanyName, setNewCompanyName] = useState('');
+            const [newCompanyTicker, setNewCompanyTicker] = useState('');
+            const [newCompanyCurrency, setNewCompanyCurrency] = useState('PLN');
+            const [editCompanyId, setEditCompanyId] = useState(null);
+            const [editCompanyName, setEditCompanyName] = useState('');
+            const [editCompanyTicker, setEditCompanyTicker] = useState('');
+            const [editCompanyCurrency, setEditCompanyCurrency] = useState('PLN');
+            const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+            const [error, setError] = useState('');
+            const [capitalShareMode, setCapitalShareMode] = useState('total');
+
+            if (!portfolio) return <div>Portfel nie znaleziony</div>;
+
+            const addCompany = () => {
+                const trimmedName = newCompanyName.trim();
+                const trimmedTicker = newCompanyTicker.trim();
+                if (!trimmedName) {
+                    setError('Nazwa spółki nie może być pusta.');
+                    return;
+                }
+                if (portfolio.companies.some(c => c.name.toLowerCase() === trimmedName.toLowerCase())) {
+                    setError('Spółka o tej nazwie już istnieje.');
+                    return;
+                }
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? {
+                            ...p,
+                            companies: [
+                                ...p.companies,
+                                {
+                                    id: Date.now(),
+                                    name: trimmedName,
+                                    ticker: trimmedTicker || null,
+                                    currency: newCompanyCurrency,
+                                    transactions: []
+                                }
+                            ]
+                        }
+                        : p
+                ));
+                setNewCompanyName('');
+                setNewCompanyTicker('');
+                setNewCompanyCurrency('PLN');
+                setError('');
+            };
+
+            const startEditCompany = (company) => {
+                setEditCompanyId(company.id);
+                setEditCompanyName(company.name);
+                setEditCompanyTicker(company.ticker || '');
+                setEditCompanyCurrency(company.currency);
+            };
+
+            const saveEditCompany = () => {
+                const trimmedName = editCompanyName.trim();
+                const trimmedTicker = editCompanyTicker.trim();
+                if (!trimmedName) {
+                    setError('Nazwa spółki nie może być pusta.');
+                    return;
+                }
+                if (portfolio.companies.some(c => c.name.toLowerCase() === trimmedName.toLowerCase() && c.id !== editCompanyId)) {
+                    setError('Spółka o tej nazwie już istnieje.');
+                    return;
+                }
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? {
+                            ...p,
+                            companies: p.companies.map(c =>
+                                c.id === editCompanyId
+                                    ? { ...c, name: trimmedName, ticker: trimmedTicker || null, currency: editCompanyCurrency }
+                                    : c
+                            )
+                        }
+                        : p
+                ));
+                setEditCompanyId(null);
+                setEditCompanyName('');
+                setEditCompanyTicker('');
+                setEditCompanyCurrency('PLN');
+                setError('');
+            };
+
+            const cancelEditCompany = () => {
+                setEditCompanyId(null);
+                setEditCompanyName('');
+                setEditCompanyTicker('');
+                setEditCompanyCurrency('PLN');
+                setError('');
+            };
+
+            const deleteCompany = (companyId) => {
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? { ...p, companies: p.companies.filter(c => c.id !== companyId) }
+                        : p
+                ));
+                if (selectedCompanyId === companyId) setSelectedCompanyId(null);
+            };
+
+            const getPortfolioSummary = () => {
+                const summary = { PLN: { value: 0, profit: 0, profitNet: 0 }, USD: { value: 0, profit: 0, profitNet: 0 } };
+                portfolio.companies.forEach(company => {
+                    const currency = company.currency || 'PLN';
+                    summary[currency].value += calculatePortfolioValue(company.transactions);
+                    const profit = calculateProfitLoss(company.transactions);
+                    summary[currency].profit += profit;
+                    summary[currency].profitNet += profit * (1 - 0.19);
+                });
+                const totalCapitalPLN = capital.PLN + (exchangeRate ? capital.USD * exchangeRate : 0);
+                const totalValuePLN = summary.PLN.value + (exchangeRate ? summary.USD.value * exchangeRate : 0);
+                return { ...summary, totalCapitalPLN, totalValuePLN };
+            };
+
+            const getPortfolioStats = () => {
+                const stats = {
+                    roiPLN: 0,
+                    roiUSD: 0,
+                    topCompany: null,
+                    companyShares: []
+                };
+                let totalInvestmentPLN = 0;
+                let totalInvestmentUSD = 0;
+                let totalProfitPLN = 0;
+                let totalProfitUSD = 0;
+                let maxProfit = -Infinity;
+                const totalCapitalPLN = capital.PLN + (exchangeRate ? capital.USD * exchangeRate : 0);
+                const totalCapitalUSD = capital.USD + (exchangeRate ? capital.PLN / exchangeRate : 0);
+
+                portfolio.companies.forEach(company => {
+                    const value = calculatePortfolioValue(company.transactions);
+                    const profit = calculateProfitLoss(company.transactions);
+                    const investment = company.transactions.reduce((sum, t) => sum + t.quantity * t.purchasePrice, 0);
+                    const valuePLN = company.currency === 'PLN' ? value : (exchangeRate ? value * exchangeRate : 0);
+                    const valueCurrency = value;
+                    if (company.currency === 'PLN') {
+                        totalInvestmentPLN += investment;
+                        totalProfitPLN += profit;
+                    } else {
+                        totalInvestmentUSD += investment;
+                        totalProfitUSD += profit;
+                    }
+                    if (profit > maxProfit) {
+                        maxProfit = profit;
+                        stats.topCompany = { name: company.name, profit, currency: company.currency };
+                    }
+                    const capitalShareTotal = totalCapitalPLN > 0 ? (valuePLN / totalCapitalPLN) * 100 : 0;
+                    const capitalShareCurrency = company.currency === 'PLN'
+                        ? (capital.PLN > 0 ? (value / capital.PLN) * 100 : 0)
+                        : (capital.USD > 0 ? (value / capital.USD) * 100 : 0);
+                    stats.companyShares.push({
+                        name: company.name,
+                        valuePLN,
+                        valueCurrency,
+                        capitalShareTotal,
+                        capitalShareCurrency,
+                        currency: company.currency
+                    });
+                });
+                stats.roiPLN = totalInvestmentPLN > 0 ? (totalProfitPLN / totalInvestmentPLN) * 100 : 0;
+                stats.roiUSD = totalInvestmentUSD > 0 ? (totalProfitUSD / totalInvestmentUSD) * 100 : 0;
+                return stats;
+            };
+
+            const exportToPDF = () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const summary = getPortfolioSummary();
+                const stats = getPortfolioStats();
+
+                doc.setFontSize(16);
+                doc.text(`Raport: ${portfolio.name}`, 10, 10);
+                doc.setFontSize(12);
+                doc.text('Podsumowanie', 10, 20);
+                doc.text(`Kapitał całkowity (PLN): ${summary.totalCapitalPLN.toFixed(2)} zł`, 10, 30);
+                doc.text(`Wartość pozycji otwartych (PLN): ${summary.totalValuePLN.toFixed(2)} zł`, 10, 40);
+                doc.text('Statystyki', 10, 50);
+                doc.text(`ROI (PLN): ${stats.roiPLN.toFixed(2)}%`, 10, 60);
+                doc.text(`ROI (USD): ${stats.roiUSD.toFixed(2)}%`, 10, 70);
+                doc.text(`Top spółka: ${stats.topCompany ? `${stats.topCompany.name} (${stats.topCompany.profit.toFixed(2)} ${stats.topCompany.currency === 'PLN' ? 'zł' : '$'})` : 'Brak'}`, 10, 80);
+                doc.text('Udział w kapitale:', 10, 90);
+                stats.companyShares.forEach((share, index) => {
+                    doc.text(`${share.name}: ${share.capitalShareTotal.toFixed(2)}% (${share.valueCurrency.toFixed(2)} ${share.currency === 'PLN' ? 'zł' : '$'})`, 10, 100 + index * 10);
+                });
+
+                doc.save(`raport_${portfolio.name}.pdf`);
+            };
+
+            const summary = getPortfolioSummary();
+            const stats = getPortfolioStats();
+
+            return selectedCompanyId ? (
+                <CompanyView
+                    portfolioId={portfolioId}
+                    companyId={selectedCompanyId}
+                    portfolios={portfolios}
+                    setPortfolios={setPortfolios}
+                    goBack={() => setSelectedCompanyId(null)}
+                    theme={theme}
+                />
+            ) : (
+                <div>
+                    <button
+                        onClick={goBack}
+                        className={`p-2 rounded mb-4 ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                    >
+                        Wybór portfela
+                    </button>
+                    <h1 className="text-2xl font-bold mb-4">{portfolio.name}</h1>
+                    {error && <p className="text-red-500 mb-4">{error}</p>}
+                    <div className="mb-4">
+                        <h2 className="text-xl font-semibold mb-2">Podsumowanie</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                <h3 className="font-bold">PLN</h3>
+                                <p>Kapitał całkowity: {capital.PLN.toFixed(2)} zł</p>
+                                <p>Wartość pozycji otwartych: {summary.PLN.value.toFixed(2)} zł</p>
+                                <p className={summary.PLN.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                    Zysk brutto: {summary.PLN.profit.toFixed(2)} zł
+                                </p>
+                                <p className={summary.PLN.profitNet >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                    Zysk netto: {summary.PLN.profitNet.toFixed(2)} zł
+                                </p>
+                            </div>
+                            <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                <h3 className="font-bold">USD</h3>
+                                <p>Kapitał całkowity: {capital.USD.toFixed(2)} $</p>
+                                <p>Wartość pozycji otwartych: {summary.USD.value.toFixed(2)} $</p>
+                                <p className={summary.USD.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                    Zysk brutto: {summary.USD.profit.toFixed(2)} $
+                                </p>
+                                <p className={summary.USD.profitNet >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                    Zysk netto: {summary.USD.profitNet.toFixed(2)} $
+                                </p>
+                            </div>
+                            {exchangeRate && (
+                                <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                    <h3 className="font-bold">Całkowite (PLN)</h3>
+                                    <p>Kurs USD/PLN: {exchangeRate.toFixed(4)}</p>
+                                    <p>Kapitał całkowity: {summary.totalCapitalPLN.toFixed(2)} zł</p>
+                                    <p>Wartość pozycji otwartych: {summary.totalValuePLN.toFixed(2)} zł</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="mb-4">
+                        <h2 className="text-xl font-semibold mb-2">Statystyki</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                <h3 className="font-bold">ROI</h3>
+                                <p>PLN: {stats.roiPLN.toFixed(2)}%</p>
+                                <p>USD: {stats.roiUSD.toFixed(2)}%</p>
+                            </div>
+                            <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                <h3 className="font-bold">Najlepsza spółka</h3>
+                                <p>{stats.topCompany ? `${stats.topCompany.name} (${stats.topCompany.profit.toFixed(2)} ${stats.topCompany.currency === 'PLN' ? 'zł' : '$'})` : 'Brak'}</p>
+                            </div>
+                            <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                <h3 className="font-bold">Udział w kapitale</h3>
+                                <div className="mb-2">
+                                    <label className="flex items-center">
+                                        <select
+                                            value={capitalShareMode}
+                                            onChange={(e) => setCapitalShareMode(e.target.value)}
+                                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                        >
+                                            <option value="total">W kapitale całkowitym (PLN)</option>
+                                            <option value="currency">W walucie spółki</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                {stats.companyShares.map(share => (
+                                    <p key={share.name}>
+                                        {share.name}: {capitalShareMode === 'total' ? share.capitalShareTotal.toFixed(2) : share.capitalShareCurrency.toFixed(2)}% 
+                                        ({share.valueCurrency.toFixed(2)} {share.currency === 'PLN' ? 'zł' : '$'})
+                                    </p>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mb-4 flex gap-2 flex-wrap">
+                        <input
+                            type="text"
+                            value={newCompanyName}
+                            onChange={(e) => setNewCompanyName(e.target.value)}
+                            placeholder="Nazwa spółki"
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                        />
+                        <input
+                            type="text"
+                            value={newCompanyTicker}
+                            onChange={(e) => setNewCompanyTicker(e.target.value)}
+                            placeholder="Ticker (opcjonalnie)"
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                        />
+                        <select
+                            value={newCompanyCurrency}
+                            onChange={(e) => setNewCompanyCurrency(e.target.value)}
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                        >
+                            <option value="PLN">PLN</option>
+                            <option value="USD">USD</option>
+                        </select>
+                        <button
+                            onClick={addCompany}
+                            className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                        >
+                            Dodaj spółkę
+                        </button>
+                        <button
+                            onClick={exportToPDF}
+                            className={`p-2 rounded ${theme === 'dark' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-purple-500 hover:bg-purple-600'} text-white`}
+                        >
+                            Eksport PDF
+                        </button>
+                    </div>
+                    <h2 className="text-xl font-semibold mb-2">Spółki</h2>
+                    {portfolio.companies.length === 0 ? (
+                        <p>Brak spółek. Dodaj nową spółkę.</p>
+                    ) : (
+                        portfolio.companies.map((company, index) => (
+                            <div
+                                key={company.id}
+                                className={`flex items-center p-4 rounded mb-2 ${theme === 'dark' ? 'hover:bg-gray-800' : 'hover:bg-gray-100'}`}
+                            >
+                                {editCompanyId === company.id ? (
+                                    <>
+                                        <input
+                                            type="text"
+                                            value={editCompanyName}
+                                            onChange={(e) => setEditCompanyName(e.target.value)}
+                                            placeholder="Nazwa spółki"
+                                            className={`border p-2 rounded flex-grow ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                        />
+                                        <input
+                                            type="text"
+                                            value={editCompanyTicker}
+                                            onChange={(e) => setEditCompanyTicker(e.target.value)}
+                                            placeholder="Ticker (opcjonalnie)"
+                                            className={`border p-2 rounded ml-2 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                        />
+                                        <select
+                                            value={editCompanyCurrency}
+                                            onChange={(e) => setEditCompanyCurrency(e.target.value)}
+                                            className={`border p-2 rounded ml-2 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                        >
+                                            <option value="PLN">PLN</option>
+                                            <option value="USD">USD</option>
+                                        </select>
+                                        <button
+                                            onClick={saveEditCompany}
+                                            className={`p-2 rounded ml-2 ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                        >
+                                            Zapisz
+                                        </button>
+                                        <button
+                                            onClick={cancelEditCompany}
+                                            className={`p-2 rounded ml-2 ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                                        >
+                                            Anuluj
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div
+                                            className="w-3 h-3 mr-2 rounded"
+                                            style={{ backgroundColor: stringToColor(company.name, index) }}
+                                        ></div>
+                                        <button
+                                            onClick={() => setSelectedCompanyId(company.id)}
+                                            className="flex-grow text-left"
+                                        >
+                                            {company.name} {company.ticker ? `(${company.ticker})` : ''} ({company.currency})
+                                        </button>
+                                        <span className="mr-4">
+                                            {calculatePortfolioValue(company.transactions).toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
+                                        </span>
+                                        <button
+                                            onClick={() => startEditCompany(company)}
+                                            className={`p-2 rounded mr-2 ${theme === 'dark' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}
+                                        >
+                                            Edytuj
+                                        </button>
+                                        <button
+                                            onClick={() => deleteCompany(company.id)}
+                                            className={`p-2 rounded ${theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white`}
+                                        >
+                                            Usuń
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            );
+        };
+
+        const CompanyView = ({ portfolioId, companyId, portfolios, setPortfolios, goBack, theme }) => {
+            const portfolio = portfolios.find(p => p.id === portfolioId);
+            const company = portfolio.companies.find(c => c.id === companyId);
+            const [quantity, setQuantity] = useState('');
+            const [purchasePrice, setPurchasePrice] = useState('');
+            const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+            const [salePrice, setSalePrice] = useState('');
+            const [saleDate, setSaleDate] = useState('');
+            const [editTransactionId, setEditTransactionId] = useState(null);
+            const [editQuantity, setEditQuantity] = useState('');
+            const [editPurchasePrice, setEditPurchasePrice] = useState('');
+            const [editPurchaseDate, setEditPurchaseDate] = useState('');
+            const [editSalePrice, setEditSalePrice] = useState('');
+            const [editSaleDate, setEditSaleDate] = useState('');
+            const [error, setError] = useState('');
+            const [showOpenOnly, setShowOpenOnly] = useState(false);
+
+            if (!company) return <div>Spółka nie znaleziona</div>;
+
+            const addTransaction = () => {
+                const qty = parseFloat(quantity);
+                const price = parseFloat(purchasePrice);
+                const sPrice = salePrice ? parseFloat(salePrice) : null;
+
+                if (isNaN(qty) || qty <= 0) {
+                    setError('Ilość akcji musi być większa od zera.');
+                    return;
+                }
+                if (isNaN(price) || price <= 0) {
+                    setError('Cena zakupu musi być większa od zera.');
+                    return;
+                }
+                if (sPrice !== null && (isNaN(sPrice) || sPrice <= 0)) {
+                    setError('Cena sprzedaży musi być większa od zera.');
+                    return;
+                }
+
+                const transaction = {
+                    id: Date.now(),
+                    quantity: qty,
+                    purchasePrice: price,
+                    purchaseDate,
+                    salePrice: sPrice,
+                    saleDate: sPrice ? (saleDate || new Date().toISOString().split('T')[0]) : null
+                };
+
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? {
+                            ...p,
+                            companies: p.companies.map(c =>
+                                c.id === companyId
+                                    ? { ...c, transactions: [...c.transactions, transaction] }
+                                    : c
+                            )
+                        }
+                        : p
+                ));
+
+                setQuantity('');
+                setPurchasePrice('');
+                setPurchaseDate(new Date().toISOString().split('T')[0]);
+                setSalePrice('');
+                setSaleDate('');
+                setError('');
+            };
+
+            const startEditTransaction = (transaction) => {
+                setEditTransactionId(transaction.id);
+                setEditQuantity(transaction.quantity);
+                setEditPurchasePrice(transaction.purchasePrice);
+                setEditPurchaseDate(transaction.purchaseDate);
+                setEditSalePrice(transaction.salePrice || '');
+                setEditSaleDate(transaction.saleDate || '');
+            };
+
+            const saveEditTransaction = () => {
+                const qty = parseFloat(editQuantity);
+                const price = parseFloat(editPurchasePrice);
+                const sPrice = editSalePrice ? parseFloat(editSalePrice) : null;
+
+                if (isNaN(qty) || qty <= 0) {
+                    setError('Ilość akcji musi być większa od zera.');
+                    return;
+                }
+                if (isNaN(price) || price <= 0) {
+                    setError('Cena zakupu musi być większa od zera.');
+                    return;
+                }
+                if (sPrice !== null && (isNaN(sPrice) || sPrice <= 0)) {
+                    setError('Cena sprzedaży musi być większa od zera.');
+                    return;
+                }
+
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? {
+                            ...p,
+                            companies: p.companies.map(c =>
+                                c.id === companyId
+                                    ? {
+                                        ...c,
+                                        transactions: c.transactions.map(t =>
+                                            t.id === editTransactionId
+                                                ? {
+                                                    ...t,
+                                                    quantity: qty,
+                                                    purchasePrice: price,
+                                                    purchaseDate: editPurchaseDate,
+                                                    salePrice: sPrice,
+                                                    saleDate: sPrice ? (editSaleDate || new Date().toISOString().split('T')[0]) : null
+                                                }
+                                                : t
+                                        )
+                                    }
+                                    : c
+                            )
+                        }
+                        : p
+                ));
+
+                setEditTransactionId(null);
+                setEditQuantity('');
+                setEditPurchasePrice('');
+                setEditPurchaseDate('');
+                setEditSalePrice('');
+                setEditSaleDate('');
+                setError('');
+            };
+
+            const cancelEditTransaction = () => {
+                setEditTransactionId(null);
+                setEditQuantity('');
+                setEditPurchasePrice('');
+                setEditPurchaseDate('');
+                setEditSalePrice('');
+                setEditSaleDate('');
+                setError('');
+            };
+
+            const addSaleToTransaction = (transactionId, salePrice, saleDate) => {
+                const sPrice = parseFloat(salePrice);
+                if (isNaN(sPrice) || sPrice <= 0) {
+                    setError('Cena sprzedaży musi być większa od zera.');
+                    return;
+                }
+
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? {
+                            ...p,
+                            companies: p.companies.map(c =>
+                                c.id === companyId
+                                    ? {
+                                        ...c,
+                                        transactions: c.transactions.map(t =>
+                                            t.id === transactionId
+                                                ? {
+                                                    ...t,
+                                                    salePrice: sPrice,
+                                                    saleDate: saleDate || new Date().toISOString().split('T')[0]
+                                                }
+                                                : t
+                                        )
+                                    }
+                                    : c
+                            )
+                        }
+                        : p
+                ));
+
+                setSalePrice('');
+                setSaleDate('');
+                setError('');
+            };
+
+            const deleteTransaction = (transactionId) => {
+                setPortfolios(portfolios.map(p =>
+                    p.id === portfolioId
+                        ? {
+                            ...p,
+                            companies: p.companies.map(c =>
+                                c.id === companyId
+                                    ? { ...c, transactions: c.transactions.filter(t => t.id !== transactionId) }
+                                    : c
+                            )
+                        }
+                        : p
+                ));
+            };
+
+            const getCompanySummary = () => {
+                const value = calculatePortfolioValue(company.transactions);
+                const profit = calculateProfitLoss(company.transactions);
+                const profitNet = calculateProfitLossNet(company.transactions);
+                return { value, profit, profitNet };
+            };
+
+            const filteredTransactions = company.transactions.filter(t => !showOpenOnly || !t.salePrice);
+            const summary = getCompanySummary();
+
+            return (
+                <div>
+                    <button
+                        onClick={goBack}
+                        className={`p-2 rounded mb-4 ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                    >
+                        Wybór spółek
+                    </button>
+                    <h1 className="text-2xl font-bold mb-4">{company.name} {company.ticker ? `(${company.ticker})` : ''} ({company.currency})</h1>
+                    {error && <p className="text-red-500 mb-4">{error}</p>}
+                    <div className="mb-4 flex flex-wrap gap-2">
+                        <input
+                            type="number"
+                            value={quantity}
+                            onChange={(e) => setQuantity(e.target.value)}
+                            placeholder="Ilość"
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                            min="0"
+                            step="1"
+                        />
+                        <input
+                            type="number"
+                            value={purchasePrice}
+                            onChange={(e) => setPurchasePrice(e.target.value)}
+                            placeholder="Cena zakupu"
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                            min="0"
+                            step="0.01"
+                        />
+                        <input
+                            type="date"
+                            value={purchaseDate}
+                            onChange={(e) => setPurchaseDate(e.target.value)}
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                        />
+                        <input
+                            type="number"
+                            value={salePrice}
+                            onChange={(e) => setSalePrice(e.target.value)}
+                            placeholder="Cena sprzedaży (opcjonalnie)"
+                            className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                            min="0"
+                            step="0.01"
+                        />
+                        {salePrice && (
+                            <input
+                                type="date"
+                                value={saleDate}
+                                onChange={(e) => setSaleDate(e.target.value)}
+                                className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                            />
+                        )}
+                        <button
+                            onClick={addTransaction}
+                            className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                        >
+                            Dodaj transakcję
+                        </button>
+                    </div>
+                    <div className="mb-4">
+                        <h2 className="text-xl font-semibold mb-2">Podsumowanie</h2>
+                        <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                            <p>Wartość pozycji otwartych: {summary.value.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}</p>
+                            <p className={summary.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                Zysk brutto: {summary.profit.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
+                            </p>
+                            <p className={summary.profitNet >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                Zysk netto: {summary.profitNet.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="mb-4">
+                        <label className="flex items-center">
+                            <input
+                                type="checkbox"
+                                checked={showOpenOnly}
+                                onChange={(e) => setShowOpenOnly(e.target.checked)}
+                                className="mr-2"
+                            />
+                            Pokaż tylko otwarte pozycje
+                        </label>
+                    </div>
+                    <h2 className="text-xl font-semibold mb-2">Transakcje</h2>
+                    {filteredTransactions.length === 0 ? (
+                        <p>Brak transakcji.</p>
+                    ) : (
+                        <table className={theme === 'dark' ? 'border-gray-700' : 'border-gray-300'}>
+                            <thead>
+                                <tr className={theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}>
+                                    <th>Ilość</th>
+                                    <th>Cena zakupu</th>
+                                    <th>Data zakupu</th>
+                                    <th>Cena sprzedaży</th>
+                                    <th>Data sprzedaży</th>
+                                    <th>Zysk</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredTransactions.map(t => (
+                                    <tr key={t.id}>
+                                        {editTransactionId === t.id ? (
+                                            <>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        value={editQuantity}
+                                                        onChange={(e) => setEditQuantity(e.target.value)}
+                                                        className={`border p-2 rounded w-full ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                        min="0"
+                                                        step="1"
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        value={editPurchasePrice}
+                                                        onChange={(e) => setEditPurchasePrice(e.target.value)}
+                                                        className={`border p-2 rounded w-full ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                        min="0"
+                                                        step="0.01"
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="date"
+                                                        value={editPurchaseDate}
+                                                        onChange={(e) => setEditPurchaseDate(e.target.value)}
+                                                        className={`border p-2 rounded w-full ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        value={editSalePrice}
+                                                        onChange={(e) => setEditSalePrice(e.target.value)}
+                                                        placeholder="Opcjonalnie"
+                                                        className={`border p-2 rounded w-full ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                        min="0"
+                                                        step="0.01"
+                                                    />
+                                                </td>
+                                                <td>
+                                                    {editSalePrice && (
+                                                        <input
+                                                            type="date"
+                                                            value={editSaleDate}
+                                                            onChange={(e) => setEditSaleDate(e.target.value)}
+                                                            className={`border p-2 rounded w-full ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                        />
+                                                    )}
+                                                </td>
+                                                <td></td>
+                                                <td>
+                                                    <button
+                                                        onClick={saveEditTransaction}
+                                                        className={`p-2 rounded mr-2 ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                                    >
+                                                        Zapisz
+                                                    </button>
+                                                    <button
+                                                        onClick={cancelEditTransaction}
+                                                        className={`p-2 rounded ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+                                                    >
+                                                        Anuluj
+                                                    </button>
+                                                </td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <td>{t.quantity}</td>
+                                                <td>{t.purchasePrice.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}</td>
+                                                <td>{t.purchaseDate}</td>
+                                                <td>{t.salePrice ? `${t.salePrice.toFixed(2)} ${company.currency === 'PLN' ? 'zł' : '$'}` : '-'}</td>
+                                                <td>{t.saleDate || '-'}</td>
+                                                <td className={t.salePrice && (t.salePrice - t.purchasePrice) * t.quantity >= 0 ? 'text-green-500' : 'text-red-500'}>
+                                                    {t.salePrice ? ((t.salePrice - t.purchasePrice) * t.quantity).toFixed(2) : '-'} {t.salePrice ? (company.currency === 'PLN' ? 'zł' : '$') : ''}
+                                                </td>
+                                                <td>
+                                                    {!t.salePrice && (
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="number"
+                                                                value={salePrice}
+                                                                onChange={(e) => setSalePrice(e.target.value)}
+                                                                placeholder="Cena sprzedaży"
+                                                                className={`border p-2 rounded w-24 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                                min="0"
+                                                                step="0.01"
+                                                            />
+                                                            <input
+                                                                type="date"
+                                                                value={saleDate}
+                                                                onChange={(e) => setSaleDate(e.target.value)}
+                                                                className={`border p-2 rounded w-32 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+                                                            />
+                                                            <button
+                                                                onClick={() => addSaleToTransaction(t.id, salePrice, saleDate)}
+                                                                className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                                                            >
+                                                                Sprzedaj
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        onClick={() => startEditTransaction(t)}
+                                                        className={`p-2 rounded mr-2 mt-2 ${theme === 'dark' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}
+                                                    >
+                                                        Edytuj
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteTransaction(t.id)}
+                                                        className={`p-2 rounded mt-2 ${theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white`}
+                                                    >
+                                                        Usuń
+                                                    </button>
+                                                </td>
+                                            </>
+                                        )}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<PortfolioManager />);
+    </script>
+</body>
+</html>
