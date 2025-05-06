@@ -105,6 +105,23 @@
     </script>
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+// === POBIERANIE KURSU Z API ===
+const fetchExchangeRateFromAPI = async (setRate, setError) => {
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=PLN&_=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const rate = data.rates?.PLN;
+    if (typeof rate !== 'number') throw new Error('Nieoczekiwany format: ' + JSON.stringify(data));
+    setRate(rate);
+    localStorage.setItem('manualExchangeRate', rate.toString());
+    setError('');
+  } catch (err) {
+    console.error('Błąd pobierania kursu:', err);
+    setError('Błąd pobierania kursu z API.');
+  }
+};
+
 
         const colorPalette = [
             '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD',
@@ -113,14 +130,21 @@
 
         const stringToColor = (str, index) => colorPalette[index % colorPalette.length];
 
-        const calculatePortfolioValue = (transactions) => {
-            return transactions.reduce((total, t) => {
-                if (!t.salePrice) {
-                    return total + t.quantity * t.purchasePrice;
-                }
-                return total;
-            }, 0);
-        };
+        
+const calculatePortfolioValue = (transactions, companyId = null) => {
+    const priceMap = (typeof window !== 'undefined' && window.companyPrices) ? window.companyPrices : {};
+    return transactions.reduce((total, t) => {
+        if (!t.salePrice) {
+            const livePrice = companyId && priceMap[companyId] !== undefined
+            ? (typeof priceMap[companyId] === 'object' ? priceMap[companyId].price : priceMap[companyId])
+            : null;
+            const usePrice = (livePrice !== null && !isNaN(livePrice)) ? livePrice : t.purchasePrice;
+            return total + t.quantity * usePrice;
+        }
+        return total;
+    }, 0);
+};
+
 
         const calculateProfitLoss = (transactions) => {
             return transactions.reduce((total, t) => {
@@ -155,6 +179,22 @@
                     return { PLN: 0, USD: 0 };
                 }
             });
+            
+const [goalPLN, setGoalPLN] = useState(() => {
+    const saved = localStorage.getItem('goalPLN');
+    return saved ? parseFloat(saved) : 0;
+});
+const [goalUSD, setGoalUSD] = useState(() => {
+    const saved = localStorage.getItem('goalUSD');
+    return saved ? parseFloat(saved) : 0;
+});
+const [editingGoals, setEditingGoals] = useState(false);
+useEffect(() => {
+    localStorage.setItem('goalPLN', goalPLN);
+    localStorage.setItem('goalUSD', goalUSD);
+}, [goalPLN, goalUSD]);
+
+const [exchangeRateError, setExchangeRateError] = useState('');
             const [manualExchangeRate, setManualExchangeRate] = useState(() => {
                 try {
                     const savedRate = localStorage.getItem('manualExchangeRate');
@@ -168,6 +208,54 @@
             const [editPortfolioId, setEditPortfolioId] = useState(null);
             const [editPortfolioName, setEditPortfolioName] = useState('');
             const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
+
+// --- reset hash on initial load when running from local file ---
+useEffect(() => {
+    if (typeof window !== 'undefined' &&
+        window.location.protocol === 'file:' &&
+        window.location.hash) {
+        // Remove hash to avoid Chrome file-access bug on refresh
+        window.history.replaceState({}, '', '#');
+    }
+}, []);
+
+
+// --- mobile back-button / history handling for portfolios ---
+useEffect(() => {
+    if (typeof window === 'undefined' || !window.history) return;
+    if (selectedPortfolioId !== null) {
+        const hash = `#portfolio-${selectedPortfolioId}`;
+        if (window.location.hash !== hash) {
+            window.history.pushState({ portfolioId: selectedPortfolioId }, '', hash);
+        }
+    } else {
+        // Return to dashboard
+        if (window.location.hash.startsWith('#portfolio-')) {
+            window.history.pushState({}, '', '#');
+        }
+    }
+}, [selectedPortfolioId]);
+
+useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePopState = () => {
+        const hash = window.location.hash;
+        if (hash.startsWith('#portfolio-')) {
+            const id = parseInt(hash.replace('#portfolio-', ''), 10);
+            if (!isNaN(id)) {
+                setSelectedPortfolioId(id);
+            }
+        } else {
+            setSelectedPortfolioId(null);
+        }
+    };
+    window.addEventListener('popstate', handlePopState);
+    // Initialize on load
+    handlePopState();
+    return () => window.removeEventListener('popstate', handlePopState);
+}, []);
+// --- end back-button handler ---
+
             const [error, setError] = useState('');
             const [showAddCapitalModal, setShowAddCapitalModal] = useState(false);
             const [showSubtractCapitalModal, setShowSubtractCapitalModal] = useState(false);
@@ -183,6 +271,14 @@
             const fileInputRef = useRef(null);
 
             useEffect(() => {
+    fetchExchangeRateFromAPI(setManualExchangeRate, setExchangeRateError);
+    const interval = setInterval(() => {
+      fetchExchangeRateFromAPI(setManualExchangeRate, setExchangeRateError);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
                 try {
                     localStorage.setItem('portfolios', JSON.stringify(portfolios));
                     localStorage.setItem('capital', JSON.stringify(capital));
@@ -209,8 +305,8 @@
                     const datasets = portfolios.map((portfolio, index) => ({
                         label: portfolio.name,
                         data: [
-                            portfolio.companies.reduce((sum, c) => c.currency === 'PLN' ? sum + calculatePortfolioValue(c.transactions) : sum, 0),
-                            portfolio.companies.reduce((sum, c) => c.currency === 'USD' ? sum + calculatePortfolioValue(c.transactions) : sum, 0)
+                            portfolio.companies.reduce((sum, c) => c.currency === 'PLN' ? sum + calculatePortfolioValue(c.transactions, c.id) : sum, 0),
+                            portfolio.companies.reduce((sum, c) => c.currency === 'USD' ? sum + calculatePortfolioValue(c.transactions, c.id) : sum, 0)
                         ],
                         backgroundColor: stringToColor(portfolio.name, index),
                         borderColor: stringToColor(portfolio.name, index),
@@ -259,8 +355,7 @@
             const closeAddCapitalModal = () => {
                 setShowAddCapitalModal(false);
                 setAddCapitalPLN('');
-                setAddCapitalUSD('');
-                setError('');
+                setAddCapitalUSD('');setError('');
             };
 
             const addCapital = () => {
@@ -288,8 +383,7 @@
             const closeSubtractCapitalModal = () => {
                 setShowSubtractCapitalModal(false);
                 setSubtractCapitalPLN('');
-                setSubtractCapitalUSD('');
-                setError('');
+                setSubtractCapitalUSD('');setError('');
             };
 
             const subtractCapital = () => {
@@ -321,8 +415,7 @@
             const closeEditCapitalModal = () => {
                 setShowEditCapitalModal(false);
                 setEditCapitalPLN('');
-                setEditCapitalUSD('');
-                setError('');
+                setEditCapitalUSD('');setError('');
             };
 
             const editCapital = () => {
@@ -342,32 +435,12 @@
             };
 
             const handleExchangeRateChange = (value) => {
-
-            const fetchExchangeRateFromNBP = async () => {
-                try {
-                    const response = await fetch("https://api.allorigins.win/raw?url=https://api.nbp.pl/api/exchangerates/rates/A/USD/?format=json");
-                    if (!response.ok) throw new Error("Błąd pobierania danych");
-                    const data = await response.json();
-                    const rate = data?.rates?.[0]?.mid;
-                    if (rate) {
-                        setManualExchangeRate(rate);
-                        localStorage.setItem('manualExchangeRate', rate.toString());
-                        setError('');
-                    } else {
-                        throw new Error("Brak kursu w odpowiedzi");
-                    }
-                } catch (error) {
-                    console.error("Błąd pobierania kursu USD/PLN:", error);
-                    setError("Nie udało się pobrać kursu USD/PLN z NBP");
-                }
-            };
                 const rate = value === '' ? null : parseFloat(value);
                 if (rate !== null && (isNaN(rate) || rate <= 0)) {
-                    setError('Kurs USD/PLN musi być większy od zera.');
+                    setExchangeRateError('Kurs USD/PLN musi być większy od zera.');
                     return;
                 }
-                setManualExchangeRate(rate);
-                setError('');
+                setManualExchangeRate(rate);setExchangeRateError('');
             };
 
             const addPortfolio = () => {
@@ -381,8 +454,7 @@
                     return;
                 }
                 setPortfolios([...portfolios, { id: Date.now(), name: trimmedName, companies: [] }]);
-                setNewPortfolioName('');
-                setError('');
+                setNewPortfolioName('');setError('');
             };
 
             const startEditPortfolio = (portfolio) => {
@@ -404,14 +476,12 @@
                     p.id === editPortfolioId ? { ...p, name: trimmedName } : p
                 ));
                 setEditPortfolioId(null);
-                setEditPortfolioName('');
-                setError('');
+                setEditPortfolioName('');setError('');
             };
 
             const cancelEditPortfolio = () => {
                 setEditPortfolioId(null);
-                setEditPortfolioName('');
-                setError('');
+                setEditPortfolioName('');setError('');
             };
 
             const deletePortfolio = (portfolioId) => {
@@ -424,13 +494,13 @@
                 portfolios.forEach(portfolio => {
                     portfolio.companies.forEach(company => {
                         const currency = company.currency || 'PLN';
-                        summary[currency].value += calculatePortfolioValue(company.transactions);
+                        summary[currency].value += calculatePortfolioValue(company.transactions, company.id);
                         const profit = calculateProfitLoss(company.transactions);
                         summary[currency].profit += profit;
                         summary[currency].profitNet += profit * (1 - 0.19);
                     });
                 });
-                const totalCapitalPLN = capital.PLN + (manualExchangeRate ? capital.USD * manualExchangeRate : 0);
+                const totalCapitalPLN = (capital.PLN + summary.PLN.profit) + (manualExchangeRate ? (capital.USD + summary.USD.profit) * manualExchangeRate : 0);
                 const totalValuePLN = summary.PLN.value + (manualExchangeRate ? summary.USD.value * manualExchangeRate : 0);
                 return { ...summary, totalCapitalPLN, totalValuePLN };
             };
@@ -457,8 +527,7 @@
                             setError('Nieprawidłowy format pliku.');
                             return;
                         }
-                        setPortfolios(importedData);
-                        setError('');
+                        setPortfolios(importedData);setError('');
                     } catch (e) {
                         setError('Błąd wczytywania pliku JSON.');
                     }
@@ -503,7 +572,7 @@
                                         <label className="block mb-1 text-sm font-medium">Kapitał całkowity PLN</label>
                                         <input
                                             type="text"
-                                            value={capital.PLN.toFixed(2)}
+                                            value={(capital.PLN + summary.PLN.profit).toFixed(2)}
                                             readOnly
                                             className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-200 text-black border-gray-300'}`}
                                         />
@@ -512,7 +581,7 @@
                                         <label className="block mb-1 text-sm font-medium">Kapitał całkowity USD</label>
                                         <input
                                             type="text"
-                                            value={capital.USD.toFixed(2)}
+                                            value={(capital.USD + summary.USD.profit).toFixed(2)}
                                             readOnly
                                             className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-200 text-black border-gray-300'}`}
                                         />
@@ -535,25 +604,27 @@
                                     >
                                         Edytuj kapitał
                                     </button>
-                                    <div>
-                                        <label className="block mb-1 text-sm font-medium">Kurs USD/PLN</label>
-                                        <input
-                                            type="number"
-                                            value={manualExchangeRate || ''}
-                                            onChange={(e) => handleExchangeRateChange(e.target.value)}
-                                            placeholder="Wprowadź kurs"
-                                            className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
-                                            min="0"
-                                            step="0.0001"
-                                        />
-<button
-    onClick={fetchExchangeRateFromNBP}
-    className={`mt-1 ml-2 p-2 rounded ${theme === 'dark' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-500 hover:bg-indigo-600'} text-white`}
->
-    🔄 Odśwież kurs USD/PLN
-</button>
-
-                                    </div>
+<div className="flex items-end gap-2">
+    <div>
+        <label className="block mb-1 text-sm font-medium">Kurs USD/PLN</label>
+        <input
+            type="number"
+            value={manualExchangeRate || ''}
+            onChange={(e) => handleExchangeRateChange(e.target.value)}
+            aria-label="manualExchangeRate"
+            placeholder="Wprowadź kurs"
+            className={`border p-2 rounded w-40 ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+            min="0"
+            step="0.0001"
+        />
+    </div>
+    <button
+        onClick={() => fetchExchangeRateFromAPI(setManualExchangeRate, setExchangeRateError)}
+        className={`h-10 px-3 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+    >
+        Odśwież
+    </button>
+</div>
                                 </div>
                             </div>
                             {showAddCapitalModal && (
@@ -599,7 +670,8 @@
                                             >
                                                 Anuluj
                                             </button>
-                                        </div>
+                                        {exchangeRateError && <p className="text-red-500 mt-1">{exchangeRateError}</p>}
+                                    </div>
                                     </div>
                                 </div>
                             )}
@@ -648,7 +720,8 @@
                                             >
                                                 Anuluj
                                             </button>
-                                        </div>
+                                        {exchangeRateError && <p className="text-red-500 mt-1">{exchangeRateError}</p>}
+                                    </div>
                                     </div>
                                 </div>
                             )}
@@ -695,7 +768,8 @@
                                             >
                                                 Anuluj
                                             </button>
-                                        </div>
+                                        {exchangeRateError && <p className="text-red-500 mt-1">{exchangeRateError}</p>}
+                                    </div>
                                     </div>
                                 </div>
                             )}
@@ -704,7 +778,7 @@
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
                                         <h3 className="font-bold">PLN</h3>
-                                        <p>Kapitał całkowity: {capital.PLN.toFixed(2)} zł</p>
+                                        <p>Kapitał całkowity: {(capital.PLN + summary.PLN.profit).toFixed(2)} zł</p>
                                         <p>Wartość pozycji otwartych: {summary.PLN.value.toFixed(2)} zł</p>
                                         <p className={summary.PLN.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
                                             Zysk brutto: {summary.PLN.profit.toFixed(2)} zł
@@ -715,7 +789,7 @@
                                     </div>
                                     <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
                                         <h3 className="font-bold">USD</h3>
-                                        <p>Kapitał całkowity: {capital.USD.toFixed(2)} $</p>
+                                        <p>Kapitał całkowity: {(capital.USD + summary.USD.profit).toFixed(2)} $</p>
                                         <p>Wartość pozycji otwartych: {summary.USD.value.toFixed(2)} $</p>
                                         <p className={summary.USD.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
                                             Zysk brutto: {summary.USD.profit.toFixed(2)} $
@@ -806,7 +880,7 @@
                                                 ></div>
                                                 <button
                                                     onClick={() => setSelectedPortfolioId(portfolio.id)}
-                                                    className="flex-grow text-left"
+                                                    className="flex-grow text-left text-xs sm:text-sm whitespace-nowrap"
                                                 >
                                                     {portfolio.name}
                                                 </button>
@@ -817,7 +891,7 @@
                                                     Edytuj
                                                 </button>
                                                 <button
-                                                    onClick={() => deletePortfolio(portfolio.id)}
+                                                    onClick={() => { if (confirm("Czy na pewno chcesz usunąć ten portfel?")) { deletePortfolio(portfolio.id); } }}
                                                     className={`p-2 rounded ${theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white`}
                                                 >
                                                     Usuń
@@ -829,8 +903,61 @@
                             )}
                             {portfolios.length > 0 && (
                                 <div className="mt-4">
-                                    <h3 className="text-lg font-semibold mb-2">Wykres portfeli</h3>
-                                    <canvas ref={chartRef} className="max-w-full h-64"></canvas>
+                                    <h3 className="text-lg font-semibold mb-2">Statystyki</h3>
+                                    
+
+<div className="mb-6 p-4 rounded border border-gray-300 dark:border-gray-700">
+    <h2 className="text-lg font-semibold mb-2">Cele inwestycyjne</h2>
+    {editingGoals ? (
+        <div className="flex flex-wrap gap-4 items-center">
+            <div>
+                <label className="block text-sm mb-1">Cel PLN</label>
+                <input type="number" value={goalPLN} onChange={e => setGoalPLN(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    className={`border p-2 rounded w-32 ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white text-black'}`} />
+            </div>
+            <div>
+                <label className="block text-sm mb-1">Cel USD</label>
+                <input type="number" value={goalUSD} onChange={e => setGoalUSD(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    className={`border p-2 rounded w-32 ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white text-black'}`} />
+            </div>
+            <button onClick={() => setEditingGoals(false)}
+                className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}>
+                Zapisz zmiany
+            </button>
+        </div>
+    ) : (
+        <div className="flex flex-wrap gap-4 items-center">
+            <p>Cel PLN: {goalPLN.toFixed(2)} zł</p>
+            <p>Cel USD: {goalUSD.toFixed(2)} $</p>
+            <button onClick={() => setEditingGoals(true)}
+                className={`p-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}>
+                Edytuj cele
+            </button>
+        </div>
+    )}
+    <div className="mt-4">
+        <label className="block text-sm mb-1">Postęp PLN (zysk brutto)</label>
+        {goalPLN > 0 && (
+            <div>
+                <div className="w-full bg-gray-200 dark:bg-gray-800 rounded h-4 relative">
+                    <div className="bg-green-500 h-4 rounded" style={{ width: `${Math.min(100, (summary.PLN.profit / goalPLN) * 100).toFixed(2)}%` }}></div>
+                    <div className="absolute w-full text-center text-xs top-0">{Math.min(100, (summary.PLN.profit / goalPLN) * 100).toFixed(2)}%</div>
+                </div>
+            </div>
+        )}
+        <label className="block text-sm mt-4 mb-1">Postęp USD (zysk brutto)</label>
+        {goalUSD > 0 && (
+            <div>
+                <div className="w-full bg-gray-200 dark:bg-gray-800 rounded h-4 relative">
+                    <div className="bg-blue-500 h-4 rounded" style={{ width: `${Math.min(100, (summary.USD.profit / goalUSD) * 100).toFixed(2)}%` }}></div>
+                    <div className="absolute w-full text-center text-xs top-0">{Math.min(100, (summary.USD.profit / goalUSD) * 100).toFixed(2)}%</div>
+                </div>
+            </div>
+        )}
+    </div>
+</div>
+
+<canvas ref={chartRef} className="max-w-full h-64"></canvas>
                                 </div>
                             )}
                         </div>
@@ -849,6 +976,87 @@
             const [editCompanyTicker, setEditCompanyTicker] = useState('');
             const [editCompanyCurrency, setEditCompanyCurrency] = useState('PLN');
             const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+
+            // --- mobile back-button / history handling ---
+            // Push a history entry whenever the selected company changes,
+            // so the Android/iOS back button returns to the previous view
+            useEffect(() => {
+                if (typeof window === 'undefined' || !window.history) return;
+                if (selectedCompanyId !== null) {
+                    // Show company view
+                    const hash = `#company-${selectedCompanyId}`;
+                    if (window.location.hash !== hash) {
+                        window.history.pushState({ companyId: selectedCompanyId }, '', hash);
+                    }
+                } else {
+                    // Back to portfolio list
+                    if (window.location.hash.startsWith('#company-')) {
+                        window.history.pushState({}, '', '#');
+                    }
+                }
+            }, [selectedCompanyId]);
+
+            // Handle the browser/device back button
+            useEffect(() => {
+                if (typeof window === 'undefined') return;
+                const handlePopState = (event) => {
+                    const hash = window.location.hash;
+                    if (hash.startsWith('#company-')) {
+                        const id = parseInt(hash.replace('#company-', ''), 10);
+                        if (!isNaN(id)) setSelectedCompanyId(id);
+                    } else {
+                        setSelectedCompanyId(null);
+                    }
+                };
+                window.addEventListener('popstate', handlePopState);
+                // Initialize on first load
+                handlePopState();
+                return () => window.removeEventListener('popstate', handlePopState);
+            }, []);
+            // --- end back‑button handler ---
+            const [companyPrices, setCompanyPrices] = useState(() => {
+    try {
+        const saved = localStorage.getItem('companyPrices');
+        return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+        return {};
+    }
+});
+            useEffect(() => {
+                const apiKey = 'd0bkurhr01qo0h63j9p0d0bkurhr01qo0h63j9pg';
+                const fetchPrices = async () => {
+                    const newPrices = {};
+                    await Promise.all(portfolio.companies.map(async company => {
+                        if (!company.ticker) return;
+                        try {
+                            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${company.ticker}&token=${apiKey}`);
+                            const data = await res.json();
+                            const price = parseFloat(data.c);
+                        const prevClose = parseFloat(data.pc);
+                        const pctChange = !isNaN(price) && !isNaN(prevClose) && prevClose !== 0 ? ((price - prevClose) / prevClose) * 100 : null;
+                        if (!isNaN(price)) newPrices[company.id] = { price, previousClose: prevClose, pctChange };
+                        } catch (err) {
+                            console.error('Error fetching price', company.ticker, err);
+                        }
+                    }));
+                    
+setCompanyPrices(prev => {
+                    const updated = { ...prev, ...newPrices };
+                    if (typeof window !== 'undefined') {
+                        window.companyPrices = updated;
+                        try {
+                            localStorage.setItem('companyPrices', JSON.stringify(updated));
+                        } catch (e) {}
+                    }
+                    return updated;
+                });
+
+                };
+                fetchPrices();
+                const interval = setInterval(fetchPrices, 60000); // refresh every minute
+                return () => clearInterval(interval);
+            }, [portfolio.companies]);
+
             const [error, setError] = useState('');
             const [capitalShareMode, setCapitalShareMode] = useState('total');
 
@@ -884,8 +1092,7 @@
                 ));
                 setNewCompanyName('');
                 setNewCompanyTicker('');
-                setNewCompanyCurrency('PLN');
-                setError('');
+                setNewCompanyCurrency('PLN');setError('');
             };
 
             const startEditCompany = (company) => {
@@ -921,16 +1128,14 @@
                 setEditCompanyId(null);
                 setEditCompanyName('');
                 setEditCompanyTicker('');
-                setEditCompanyCurrency('PLN');
-                setError('');
+                setEditCompanyCurrency('PLN');setError('');
             };
 
             const cancelEditCompany = () => {
                 setEditCompanyId(null);
                 setEditCompanyName('');
                 setEditCompanyTicker('');
-                setEditCompanyCurrency('PLN');
-                setError('');
+                setEditCompanyCurrency('PLN');setError('');
             };
 
             const deleteCompany = (companyId) => {
@@ -946,12 +1151,12 @@
                 const summary = { PLN: { value: 0, profit: 0, profitNet: 0 }, USD: { value: 0, profit: 0, profitNet: 0 } };
                 portfolio.companies.forEach(company => {
                     const currency = company.currency || 'PLN';
-                    summary[currency].value += calculatePortfolioValue(company.transactions);
+                    summary[currency].value += calculatePortfolioValue(company.transactions, company.id);
                     const profit = calculateProfitLoss(company.transactions);
                     summary[currency].profit += profit;
                     summary[currency].profitNet += profit * (1 - 0.19);
                 });
-                const totalCapitalPLN = capital.PLN + (exchangeRate ? capital.USD * exchangeRate : 0);
+                const totalCapitalPLN = (capital.PLN + summary.PLN.profit) + (exchangeRate ? (capital.USD + summary.USD.profit) * exchangeRate : 0);
                 const totalValuePLN = summary.PLN.value + (exchangeRate ? summary.USD.value * exchangeRate : 0);
                 return { ...summary, totalCapitalPLN, totalValuePLN };
             };
@@ -972,7 +1177,7 @@
                 const totalCapitalUSD = capital.USD + (exchangeRate ? capital.PLN / exchangeRate : 0);
 
                 portfolio.companies.forEach(company => {
-                    const value = calculatePortfolioValue(company.transactions);
+                    const value = calculatePortfolioValue(company.transactions, company.id);
                     const profit = calculateProfitLoss(company.transactions);
                     const investment = company.transactions.reduce((sum, t) => sum + t.quantity * t.purchasePrice, 0);
                     const valuePLN = company.currency === 'PLN' ? value : (exchangeRate ? value * exchangeRate : 0);
@@ -1003,6 +1208,18 @@
                 });
                 stats.roiPLN = totalInvestmentPLN > 0 ? (totalProfitPLN / totalInvestmentPLN) * 100 : 0;
                 stats.roiUSD = totalInvestmentUSD > 0 ? (totalProfitUSD / totalInvestmentUSD) * 100 : 0;
+stats.topCompanies = portfolio.companies
+    .map(company => {
+        const profit = calculateProfitLoss(company.transactions);
+        return {
+            name: company.name,
+            profit,
+            currency: company.currency
+        };
+    })
+    .filter(c => !isNaN(c.profit))
+    .sort((a, b) => b.profit - a.profit)
+    .slice(0, 3);
                 return stats;
             };
 
@@ -1021,7 +1238,17 @@
                 doc.text('Statystyki', 10, 50);
                 doc.text(`ROI (PLN): ${stats.roiPLN.toFixed(2)}%`, 10, 60);
                 doc.text(`ROI (USD): ${stats.roiUSD.toFixed(2)}%`, 10, 70);
-                doc.text(`Top spółka: ${stats.topCompany ? `${stats.topCompany.name} (${stats.topCompany.profit.toFixed(2)} ${stats.topCompany.currency === 'PLN' ? 'zł' : '$'})` : 'Brak'}`, 10, 80);
+                doc.text(`Top spółka: ${stats.topCompanies && stats.topCompanies.length > 0 ? (
+    <ul>
+        {stats.topCompanies.map((c, i) => (
+            <li key={i}>
+                {c.name} ({c.profit.toFixed(2)} {c.currency === 'PLN' ? 'zł' : '$'})
+            </li>
+        ))}
+    </ul>
+) : (
+    <p>Brak</p>
+)}`, 10, 80);
                 doc.text('Udział w kapitale:', 10, 90);
                 stats.companyShares.forEach((share, index) => {
                     doc.text(`${share.name}: ${share.capitalShareTotal.toFixed(2)}% (${share.valueCurrency.toFixed(2)} ${share.currency === 'PLN' ? 'zł' : '$'})`, 10, 100 + index * 10);
@@ -1057,7 +1284,7 @@
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
                                 <h3 className="font-bold">PLN</h3>
-                                <p>Kapitał całkowity: {capital.PLN.toFixed(2)} zł</p>
+                                <p>Kapitał całkowity: {(capital.PLN + summary.PLN.profit).toFixed(2)} zł</p>
                                 <p>Wartość pozycji otwartych: {summary.PLN.value.toFixed(2)} zł</p>
                                 <p className={summary.PLN.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
                                     Zysk brutto: {summary.PLN.profit.toFixed(2)} zł
@@ -1068,7 +1295,7 @@
                             </div>
                             <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
                                 <h3 className="font-bold">USD</h3>
-                                <p>Kapitał całkowity: {capital.USD.toFixed(2)} $</p>
+                                <p>Kapitał całkowity: {(capital.USD + summary.USD.profit).toFixed(2)} $</p>
                                 <p>Wartość pozycji otwartych: {summary.USD.value.toFixed(2)} $</p>
                                 <p className={summary.USD.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
                                     Zysk brutto: {summary.USD.profit.toFixed(2)} $
@@ -1096,8 +1323,18 @@
                                 <p>USD: {stats.roiUSD.toFixed(2)}%</p>
                             </div>
                             <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                                <h3 className="font-bold">Najlepsza spółka</h3>
-                                <p>{stats.topCompany ? `${stats.topCompany.name} (${stats.topCompany.profit.toFixed(2)} ${stats.topCompany.currency === 'PLN' ? 'zł' : '$'})` : 'Brak'}</p>
+                                <h3 className="font-bold">Top 3 spółek</h3>
+                                <p>{stats.topCompanies && stats.topCompanies.length > 0 ? (
+    <ul>
+        {stats.topCompanies.map((c, i) => (
+            <li key={i}>
+                {c.name} ({c.profit.toFixed(2)} {c.currency === 'PLN' ? 'zł' : '$'})
+            </li>
+        ))}
+    </ul>
+) : (
+    <p>Brak</p>
+)}</p>
                             </div>
                             <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
                                 <h3 className="font-bold">Udział w kapitale</h3>
@@ -1158,7 +1395,10 @@
                             Eksport PDF
                         </button>
                     </div>
-                    <h2 className="text-xl font-semibold mb-2">Spółki</h2>
+                    <div className="flex items-center justify-between mb-2">
+    <h2 className="text-sm sm:text-xl font-semibold">Spółki</h2>
+    
+</div>
                     {portfolio.companies.length === 0 ? (
                         <p>Brak spółek. Dodaj nową spółkę.</p>
                     ) : (
@@ -1212,12 +1452,46 @@
                                         ></div>
                                         <button
                                             onClick={() => setSelectedCompanyId(company.id)}
-                                            className="flex-grow text-left"
+                                            className="flex-grow text-left text-xs sm:text-sm whitespace-nowrap"
                                         >
-                                            {company.name} {company.ticker ? `(${company.ticker})` : ''} ({company.currency})
+                                            {company.name} {' '}
+                            {company.ticker ? (
+                                <span className="gt-ticker" data-ticker={company.ticker} data-currency={company.currency}>{company.ticker}</span>
+                            ) : null} {' '}
+                            ({company.currency}) {(() => {
+                                            const pd = companyPrices[company.id];
+                                            if (!pd) return '';
+                                            const pctCol = pd.pctChange >= 0 ? 'text-green-500' : 'text-red-500';
+                                            return (
+                                                <span>
+                                                    {pd.price.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}{' '}
+                                                    <span className={pctCol}>
+                                                        ({pd.pctChange !== null ? pd.pctChange.toFixed(2) : '0.00'}%)
+                                                    </span>
+                                                </span>
+                                            );
+                                        })()} {(() => {
+                                            if (typeof companyPrices === 'undefined') return null;
+                                            const sellTargets = company.transactions
+    .filter(t => !t.salePrice && t.suggestedProfitPercent != null)
+    .map(t => t.purchasePrice * (1 + t.suggestedProfitPercent / 100));
+const buyTargets = company.transactions
+    .filter(t => !t.salePrice && t.suggestedProfitPercent != null)
+    .map(t => t.purchasePrice * (1 - t.suggestedProfitPercent / 100));
+const minSell = sellTargets.length ? Math.min(...sellTargets) : null;
+const minBuy = buyTargets.length ? Math.min(...buyTargets) : null;
+const price = companyPrices[company.id];
+return price !== undefined && (
+  (minSell !== null && price >= minSell)
+    ? <span className="ml-2 text-red-500 font-semibold">sprzedaj</span>
+    : (minBuy !== null && price <= minBuy)
+      ? <span className="ml-2 text-green-500 font-semibold">kup</span>
+      : null
+);
+                                        })()}
                                         </button>
-                                        <span className="mr-4">
-                                            {calculatePortfolioValue(company.transactions).toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
+                                        <span className="hidden">
+                                            {calculatePortfolioValue(company.transactions, company.id).toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
                                         </span>
                                         <button
                                             onClick={() => startEditCompany(company)}
@@ -1226,7 +1500,7 @@
                                             Edytuj
                                         </button>
                                         <button
-                                            onClick={() => deleteCompany(company.id)}
+                                            onClick={() => { if (confirm("Czy na pewno chcesz usunąć tę spółkę?")) { deleteCompany(company.id); } }}
                                             className={`p-2 rounded ${theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white`}
                                         >
                                             Usuń
@@ -1248,6 +1522,7 @@
             const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
             const [salePrice, setSalePrice] = useState('');
             const [saleDate, setSaleDate] = useState('');
+            const [suggestedProfitPercent, setSuggestedProfitPercent] = useState('');
             const [editTransactionId, setEditTransactionId] = useState(null);
             const [editQuantity, setEditQuantity] = useState('');
             const [editPurchasePrice, setEditPurchasePrice] = useState('');
@@ -1279,6 +1554,8 @@
 
                 const transaction = {
                     id: Date.now(),
+                    suggestedProfitPercent: suggestedProfitPercent !== '' ? parseFloat(suggestedProfitPercent) : null,
+                    suggestedProfitPercent: suggestedProfitPercent !== '' ? parseFloat(suggestedProfitPercent) : null,
                     quantity: qty,
                     purchasePrice: price,
                     purchaseDate,
@@ -1303,8 +1580,7 @@
                 setPurchasePrice('');
                 setPurchaseDate(new Date().toISOString().split('T')[0]);
                 setSalePrice('');
-                setSaleDate('');
-                setError('');
+                setSaleDate('');setError('');
             };
 
             const startEditTransaction = (transaction) => {
@@ -1366,8 +1642,7 @@
                 setEditPurchasePrice('');
                 setEditPurchaseDate('');
                 setEditSalePrice('');
-                setEditSaleDate('');
-                setError('');
+                setEditSaleDate('');setError('');
             };
 
             const cancelEditTransaction = () => {
@@ -1376,8 +1651,7 @@
                 setEditPurchasePrice('');
                 setEditPurchaseDate('');
                 setEditSalePrice('');
-                setEditSaleDate('');
-                setError('');
+                setEditSaleDate('');setError('');
             };
 
             const addSaleToTransaction = (transactionId, salePrice, saleDate) => {
@@ -1412,8 +1686,7 @@
                 ));
 
                 setSalePrice('');
-                setSaleDate('');
-                setError('');
+                setSaleDate('');setError('');
             };
 
             const deleteTransaction = (transactionId) => {
@@ -1432,7 +1705,7 @@
             };
 
             const getCompanySummary = () => {
-                const value = calculatePortfolioValue(company.transactions);
+                const value = calculatePortfolioValue(company.transactions, company.id);
                 const profit = calculateProfitLoss(company.transactions);
                 const profitNet = calculateProfitLossNet(company.transactions);
                 return { value, profit, profitNet };
@@ -1449,7 +1722,29 @@
                     >
                         Wybór spółek
                     </button>
-                    <h1 className="text-2xl font-bold mb-4">{company.name} {company.ticker ? `(${company.ticker})` : ''} ({company.currency})</h1>
+                    <h1 className="text-2xl font-bold mb-4">{company.name} {' '}
+                            {company.ticker ? (
+                                <span className="gt-ticker" data-ticker={company.ticker} data-currency={company.currency}>{company.ticker}</span>
+                            ) : null} {' '}
+                            ({company.currency}) {(() => {
+                                            if (typeof companyPrices === 'undefined') return null;
+                                            const sellTargets = company.transactions
+    .filter(t => !t.salePrice && t.suggestedProfitPercent != null)
+    .map(t => t.purchasePrice * (1 + t.suggestedProfitPercent / 100));
+const buyTargets = company.transactions
+    .filter(t => !t.salePrice && t.suggestedProfitPercent != null)
+    .map(t => t.purchasePrice * (1 - t.suggestedProfitPercent / 100));
+const minSell = sellTargets.length ? Math.min(...sellTargets) : null;
+const minBuy = buyTargets.length ? Math.min(...buyTargets) : null;
+const price = companyPrices[company.id];
+return price !== undefined && (
+  (minSell !== null && price >= minSell)
+    ? <span className="ml-2 text-red-500 font-semibold">sprzedaj</span>
+    : (minBuy !== null && price <= minBuy)
+      ? <span className="ml-2 text-green-500 font-semibold">kup</span>
+      : null
+);
+                                        })()}</h1>
                     {error && <p className="text-red-500 mb-4">{error}</p>}
                     <div className="mb-4 flex flex-wrap gap-2">
                         <input
@@ -1485,6 +1780,15 @@
                             min="0"
                             step="0.01"
                         />
+<input
+    type="number"
+    value={suggestedProfitPercent}
+    onChange={(e) => setSuggestedProfitPercent(e.target.value)}
+    placeholder="Sugerowany % K/S"
+    className={`border p-2 rounded ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+    min="0"
+    step="0.01"
+/>
                         {salePrice && (
                             <input
                                 type="date"
@@ -1534,10 +1838,11 @@
                                     <th>Cena zakupu</th>
                                     <th>Data zakupu</th>
                                     <th>Cena sprzedaży</th>
-                                    <th>Data sprzedaży</th>
+<th className="w-36">Sugerowana cena sprzedaży</th>
+<th>Data sprzedaży</th>
                                     <th>Zysk</th>
-                                    <th>Akcje</th>
-                                </tr>
+                                    <th>Opcje</th>
+                                    </tr>
                             </thead>
                             <tbody>
                                 {filteredTransactions.map(t => (
@@ -1595,26 +1900,36 @@
                                                 </td>
                                                 <td></td>
                                                 <td>
-                                                    <button
-                                                        onClick={saveEditTransaction}
-                                                        className={`p-2 rounded mr-2 ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
-                                                    >
-                                                        Zapisz
-                                                    </button>
-                                                    <button
-                                                        onClick={cancelEditTransaction}
-                                                        className={`p-2 rounded ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
-                                                    >
-                                                        Anuluj
-                                                    </button>
-                                                </td>
-                                            </>
+    <button
+        onClick={saveEditTransaction}
+        className={`p-2 rounded mr-2 ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+    >
+        Zapisz
+    </button>
+    <button
+        onClick={cancelEditTransaction}
+        className={`p-2 rounded ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+    >
+        Anuluj
+    </button>
+</td>
+</>
                                         ) : (
                                             <>
                                                 <td>{t.quantity}</td>
                                                 <td>{t.purchasePrice.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}</td>
                                                 <td>{t.purchaseDate}</td>
                                                 <td>{t.salePrice ? `${t.salePrice.toFixed(2)} ${company.currency === 'PLN' ? 'zł' : '$'}` : '-'}</td>
+<td>{t.suggestedProfitPercent != null ? (
+  <div className="flex flex-col">
+    <span className="text-red-500 text-sm">
+      {(t.purchasePrice * (1 + t.suggestedProfitPercent / 100)).toFixed(2)}
+    </span>
+    <span className="text-green-500 text-sm">
+      {(t.purchasePrice * (1 - t.suggestedProfitPercent / 100)).toFixed(2)}
+    </span>
+  </div>
+) : '-'}</td>
                                                 <td>{t.saleDate || '-'}</td>
                                                 <td className={t.salePrice && (t.salePrice - t.purchasePrice) * t.quantity >= 0 ? 'text-green-500' : 'text-red-500'}>
                                                     {t.salePrice ? ((t.salePrice - t.purchasePrice) * t.quantity).toFixed(2) : '-'} {t.salePrice ? (company.currency === 'PLN' ? 'zł' : '$') : ''}
@@ -1652,7 +1967,7 @@
                                                         Edytuj
                                                     </button>
                                                     <button
-                                                        onClick={() => deleteTransaction(t.id)}
+                                                        onClick={() => { if (confirm("Czy na pewno chcesz usunąć tę transakcję?")) { deleteTransaction(t.id); } }}
                                                         className={`p-2 rounded mt-2 ${theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white`}
                                                     >
                                                         Usuń
@@ -1671,5 +1986,47 @@
 
         ReactDOM.createRoot(document.getElementById('root')).render(<PortfolioManager />);
     </script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const apiKey = 'd0bkurhr01qo0h63j9p0d0bkurhr01qo0h63j9pg';
+      async function updateTicker(el) {
+        const ticker = el.getAttribute('data-ticker');
+        try {
+          const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`);
+          const data = await res.json();
+          const price = parseFloat(data.c);
+          if (!isNaN(price)) {
+            
+const currency = el.getAttribute('data-currency') || '';
+const symbols = { USD: '$', PLN: 'zł', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF' };
+const sym = symbols[currency] || (currency ? currency + ' ' : '');
+el.textContent = `${ticker}`;
+          } else {
+            el.textContent = `${ticker}`;
+          }
+        } catch (err) {
+          console.error('Error fetching live price for', ticker, err);
+        }
+      }
+      // Observe additions
+      const observer = new MutationObserver(mutations => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.nodeType === 1) {
+              node.querySelectorAll('.gt-ticker').forEach(updateTicker);
+            }
+          }
+        }
+      });
+      const rootElement = document.getElementById('root') || document.body;
+      observer.observe(rootElement, { childList: true, subtree: true });
+      // Initial update
+      setTimeout(() => {
+        document.querySelectorAll('.gt-ticker').forEach(updateTicker);
+      }, 1000);
+    });
+  </script>
+
 </body>
 </html>
