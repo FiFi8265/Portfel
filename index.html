@@ -195,7 +195,23 @@ useEffect(() => {
 }, [goalPLN, goalUSD]);
 
 const [exchangeRateError, setExchangeRateError] = useState('');
-            const [manualExchangeRate, setManualExchangeRate] = useState(() => {
+            
+const [apiKey, setApiKey] = useState(() => {
+  try {
+    return localStorage.getItem('finnhubApiKey') || '';
+  } catch (e) {
+    return '';
+  }
+});
+
+useEffect(() => {
+  window.apiKey = apiKey;
+  try {
+      localStorage.setItem('finnhubApiKey', apiKey);
+  } catch (e) {}
+}, [apiKey]);
+
+const [manualExchangeRate, setManualExchangeRate] = useState(() => {
                 try {
                     const savedRate = localStorage.getItem('manualExchangeRate');
                     return savedRate ? parseFloat(savedRate) : null;
@@ -958,6 +974,25 @@ useEffect(() => {
 </div>
 
 <canvas ref={chartRef} className="max-w-full h-64"></canvas>
+<div className="mt-4">
+  <label className="block mb-1 text-sm font-medium">Klucz API Finnhub</label>
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={apiKey}
+      onChange={(e) => setApiKey(e.target.value)}
+      placeholder="Wprowadź klucz API"
+      className={`border p-2 rounded flex-grow ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+    />
+    <button
+      onClick={() => { window.apiKey = apiKey; localStorage.setItem('finnhubApiKey', apiKey); alert('Klucz API zapisany!'); }}
+      className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+    >
+      Zatwierdź
+    </button>
+  </div>
+</div>
+
                                 </div>
                             )}
                         </div>
@@ -1023,7 +1058,7 @@ useEffect(() => {
     }
 });
             useEffect(() => {
-                const apiKey = 'd0bkurhr01qo0h63j9p0d0bkurhr01qo0h63j9pg';
+                const apiKey = window.apiKey || '';
                 const fetchPrices = async () => {
                     const newPrices = {};
                     await Promise.all(portfolio.companies.map(async company => {
@@ -1989,7 +2024,7 @@ return price !== undefined && (
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const apiKey = 'd0bkurhr01qo0h63j9p0d0bkurhr01qo0h63j9pg';
+      const apiKey = '';
       async function updateTicker(el) {
         const ticker = el.getAttribute('data-ticker');
         try {
@@ -2028,5 +2063,37 @@ el.textContent = `${ticker}`;
     });
   </script>
 
+
+<script>
+function exportHtmlWithKey(apiKey) {
+  const updatedHtml = document.documentElement.outerHTML
+      .replace(/window\.apiKey\s*=\s*['"][^'"]*['"];/, 'window.apiKey="'+apiKey+'";');
+
+  const blob = new Blob([updatedHtml], {type: 'text/html'});
+
+  // Try using File System Access API first (Chrome / Edge)
+  if (window.showSaveFilePicker) {
+    window.showSaveFilePicker({
+      suggestedName: 'GT_V1.7_with_key.html',
+      types: [{ description: 'HTML File', accept: { 'text/html': ['.html'] } }]
+    }).then(async (fileHandle) => {
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        alert('Plik HTML zaktualizowany i zapisany!');
+    }).catch(() => {
+        // If user cancels, silently ignore
+    });
+  } else {
+    // Fallback – pobierz plik
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'GT_V1.7_with_key.html';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+</script>
 </body>
 </html>
