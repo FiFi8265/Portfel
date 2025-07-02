@@ -64,10 +64,7 @@
         .animate-fade-in {
             animation: fadeIn 0.3s ease-out;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+        
         th, td {
             border: 1px solid;
             padding: 8px;
@@ -83,6 +80,73 @@
 [data-limit].show-all > li,
 [data-limit].show-all > p{
   display:list-item;
+}
+</style>
+
+
+<!-- Custom Styles for Improved Readability -->
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f7fa;
+  color: #333;
+  margin: 20px;
+}
+
+table th, table td {
+  border: 1px solid #e1e1e1;
+  padding: 8px;
+  text-align: left;
+}
+button {
+  background: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 8px 12px;
+  margin: 10px 0;
+  transition: background 0.3s;
+}
+button:hover {
+  background: #0056b3;
+}
+.chart-container {
+  background: #fff;
+  padding: 1rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  margin-bottom: 2rem;
+  border-radius: 8px;
+}
+.company-section {
+  margin-bottom: 40px;
+}
+</style>
+
+
+<style>
+/* Remove collapse to retain rounded corners */
+table {
+  border-collapse: separate !important;
+  border-spacing: 0;
+}
+/* Apply rounded corners on table */
+table thead tr th:first-child {
+  border-top-left-radius: 4px;
+}
+table thead tr th:last-child {
+  border-top-right-radius: 4px;
+}
+table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 4px;
+}
+table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 4px;
+}
+/* Ensure chart canvas fills container */
+.chart-container canvas {
+  width: 100% !important;
+  height: 400px !important;
 }
 </style>
 
@@ -202,6 +266,35 @@ const calculateProfitLossNet = (transactions, period) => {
     return calculateProfitLoss(transactions, period) * (1 - 0.19);
 };
 
+const calculateTPCount = (transactions, period) => {
+    const selectedPeriod = period || (typeof window !== 'undefined' && window.profitPeriod) || 'all';
+    const now = new Date();
+    let startDate = null;
+    if (selectedPeriod === 'day') {
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 1);
+    } else if (selectedPeriod === 'week') {
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+    } else if (selectedPeriod === 'month') {
+        startDate = new Date(now);
+        startDate.setMonth(now.getMonth() - 1);
+    } else if (selectedPeriod === 'year') {
+        startDate = new Date(now);
+        startDate.setFullYear(now.getFullYear() - 1);
+    }
+    const filtered = transactions.filter(t => {
+        if (!t.salePrice) return false;
+        if (!startDate) return true;
+        const dateStr = t.saleDate || t.date || t.purchaseDate;
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        return d >= startDate;
+    });
+    return filtered.length;
+};
+
+
 
         const PortfolioManager = () => {
             const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
@@ -254,6 +347,21 @@ useEffect(() => {
       localStorage.setItem('finnhubApiKey', apiKey);
   } catch (e) {}
 }, [apiKey]);
+const [marketstackKey, setMarketstackKey] = useState(() => {
+  try {
+    return localStorage.getItem('marketstackApiKey') || '';
+  } catch (e) {
+    return '';
+  }
+});
+
+useEffect(() => {
+  window.marketstackApiKey = marketstackKey;
+  try {
+    localStorage.setItem('marketstackApiKey', marketstackKey);
+  } catch (e) {}
+}, [marketstackKey]);
+
 
 const [manualExchangeRate, setManualExchangeRate] = useState(() => {
                 try {
@@ -1075,6 +1183,25 @@ const importData = (event) => {
     </button>
   </div>
 </div>
+<div className="mt-4">
+  <label className="block mb-1 text-sm font-medium">Klucz API <a href="https://marketstack.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Marketstack</a></label>
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={marketstackKey}
+      onChange={(e) => setMarketstackKey(e.target.value)}
+      placeholder="Wprowadź klucz API Marketstack"
+      className={`border p-2 rounded flex-grow ${theme === 'dark' ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-black border-gray-300'}`}
+    />
+    <button
+      onClick={() => { window.marketstackApiKey = marketstackKey; localStorage.setItem('marketstackApiKey', marketstackKey); alert('Klucz Marketstack zapisany!'); }}
+      className={`p-2 rounded ${theme === 'dark' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white`}
+    >
+      Zatwierdź
+    </button>
+  </div>
+</div>
+
 
                                 </div>
                             )}
@@ -1148,12 +1275,32 @@ const importData = (event) => {
                     await Promise.all(sortedCompanies.map(async company => {
                         if (!company.ticker) return;
                         try {
-                            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${company.ticker}&token=${apiKey}`);
-                            const data = await res.json();
-                            const price = parseFloat(data.c);
-                        const prevClose = parseFloat(data.pc);
-                        const pctChange = !isNaN(price) && !isNaN(prevClose) && prevClose !== 0 ? ((price - prevClose) / prevClose) * 100 : null;
-                        if (!isNaN(price)) newPrices[company.id] = { price, previousClose: prevClose, pctChange };
+                            
+let price = NaN, prevClose = null, pctChange = null;
+try {
+  if (company.currency === 'PLN') {
+    let tickerSymbol = company.ticker || '';
+    if (tickerSymbol && !/\.XWAR$/i.test(tickerSymbol)) tickerSymbol += '.XWAR';
+    const resMkt = await fetch(`https://api.marketstack.com/v1/eod?access_key=${window.marketstackApiKey || ''}&symbols=${tickerSymbol}&limit=2`);
+    const dataMkt = await resMkt.json();
+    if (Array.isArray(dataMkt.data) && dataMkt.data.length) {
+      price = parseFloat(dataMkt.data[0].close);
+      if (dataMkt.data.length > 1) prevClose = parseFloat(dataMkt.data[1].close);
+    }
+  } else {
+    const resFinn = await fetch(`https://finnhub.io/api/v1/quote?symbol=${company.ticker}&token=${apiKey}`);
+    const dataFinn = await resFinn.json();
+    price = parseFloat(dataFinn.c);
+    prevClose = parseFloat(dataFinn.pc);
+  }
+  if (!isNaN(price) && !isNaN(prevClose) && prevClose !== 0) {
+    pctChange = ((price - prevClose) / prevClose) * 100;
+  }
+} catch(err) {
+  console.error('Error fetching price for', company.ticker, err);
+}
+if (!isNaN(price)) newPrices[company.id] = { price, previousClose: prevClose, pctChange };
+
                         } catch (err) {
                             console.error('Error fetching price', company.ticker, err);
                         }
@@ -1353,6 +1500,7 @@ stats.topCompanies = portfolio.companies
         const profit = calculateProfitLoss(company.transactions, profitPeriod);
         return {
             name: company.name,
+            tpCount: calculateTPCount(company.transactions, profitPeriod),
             profit,
             currency: company.currency
         };
@@ -1360,6 +1508,7 @@ stats.topCompanies = portfolio.companies
     .filter(c => !isNaN(c.profit))
     .sort((a, b) => b.profit - a.profit)
     ;
+stats.totalTP = stats.topCompanies.reduce((sum, c) => sum + c.tpCount, 0);
                 stats.companyShares.sort((a, b) => b.capitalShareTotal - a.capitalShareTotal);
                 return stats;
             };
@@ -1575,12 +1724,12 @@ const exportToPDF = () => {
                                 <p>USD: {stats.roiUSD.toFixed(2)}%</p>
                             </div>
                             <div className={`p-4 rounded ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                                <h3 className="font-bold">Top spółki</h3>
+                                <h3 className="font-bold">Top spółki (TP: {stats.totalTP})</h3>
                                 <p>{stats.topCompanies && stats.topCompanies.length > 0 ? (
     <ul data-limit="3">
         {stats.topCompanies.map((c, i) => (
             <li key={i}>
-                {c.name} ({c.profit.toFixed(2)} {c.currency === 'PLN' ? 'zł' : '$'})
+                {c.name} ({c.profit.toFixed(2)} {c.currency === 'PLN' ? 'zł' : '$'}, TP: {c.tpCount})
             </li>
         ))}
     </ul>
@@ -1732,7 +1881,7 @@ const exportToPDF = () => {
   return (
   <div className="mt-2 mb-1 w-full">
     <div className="text-center text-xs text-gray-400">
-      {buyThreshold.toFixed(2)}$
+      {buyThreshold.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
     </div>
   </div>
 );
@@ -1766,11 +1915,11 @@ if (new Date(t.purchaseDate).getTime() !== latestOpenPurchaseDate) return null;c
         />
       </div>
       <div className="flex justify-between text-xs text-gray-500 mt-1">
-        <span>{buy.toFixed(2)}</span>
-        <span>{sell.toFixed(2)}</span>
+        <span>{buy.toFixed(2)} (-{t.suggestedProfitPercent.toFixed(2)}%)</span>
+        <span>{sell.toFixed(2)} (+{t.suggestedProfitPercent.toFixed(2)}%)</span>
       </div>
       <div className="text-center mt-1 text-sm font-medium" style={{ color: profit >= 0 ? '#22c55e' : '#ef4444' }}>
-        {profit >= 0 ? '+' : ''}{profit.toFixed(2)} $
+        {profit >= 0 ? '+' : ''}{profit.toFixed(2)} {company.currency === 'PLN' ? 'zł' : '$'}
       </div>
     </div>
   );
@@ -1870,7 +2019,23 @@ if (new Date(t.purchaseDate).getTime() !== latestOpenPurchaseDate) return null;c
             const [editSalePrice, setEditSalePrice] = useState('');
             const [editSaleDate, setEditSaleDate] = useState('');
             const [error, setError] = useState('');
-            const [showOpenOnly, setShowOpenOnly] = useState(false);
+            const [showOpenOnly, setShowOpenOnly] = useState(() => {
+  try {
+    const saved = localStorage.getItem('showOpenOnly');
+    return saved ? JSON.parse(saved) : false;
+  } catch (e) {
+    console.error('Błąd odczytu z localStorage:', e);
+    return false;
+  }
+});
+
+useEffect(() => {
+  try {
+    localStorage.setItem('showOpenOnly', JSON.stringify(showOpenOnly));
+  } catch (e) {
+    console.error('Błąd zapisu do localStorage:', e);
+  }
+}, [showOpenOnly]);
 
             if (!company) return <div>Spółka nie znaleziona</div>;
 
@@ -2273,7 +2438,7 @@ if (new Date(t.purchaseDate).getTime() !== latestOpenPurchaseDate) return null;c
                                                 <td>{t.purchaseDate}</td>
                                                 <td>{t.salePrice ? `${t.salePrice.toFixed(2)} ${company.currency === 'PLN' ? 'zł' : '$'}` : '-'}</td>
 <td>{t.suggestedProfitPercent != null ? (
-  <div className="flex flex-col">
+  <div className="flex flex-col items-center"><span className="text-xs font-semibold">{t.suggestedProfitPercent.toFixed(2)}%</span>
     <span className="text-red-500 text-sm">
       {(t.purchasePrice * (1 + t.suggestedProfitPercent / 100)).toFixed(2)}
     </span>
@@ -2344,15 +2509,32 @@ if (new Date(t.purchaseDate).getTime() !== latestOpenPurchaseDate) return null;c
       async function updateTicker(el) {
         const ticker = el.getAttribute('data-ticker');
         try {
-          const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`);
-          const data = await res.json();
-          const price = parseFloat(data.c);
-          if (!isNaN(price)) {
-            
+          
+let price = NaN;
 const currency = el.getAttribute('data-currency') || '';
-const symbols = { USD: '$', PLN: 'zł', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF' };
-const sym = symbols[currency] || (currency ? currency + ' ' : '');
-el.textContent = `${ticker}`;
+try {
+  if (currency === 'PLN') {
+    let tickerSymbol = ticker;
+    if (tickerSymbol && !/\.XWAR$/i.test(tickerSymbol)) tickerSymbol += '.XWAR';
+    const resMkt = await fetch(`https://api.marketstack.com/v1/eod?access_key=${window.marketstackApiKey || ''}&symbols=${tickerSymbol}&limit=1`);
+    const dataMkt = await resMkt.json();
+    if (Array.isArray(dataMkt.data) && dataMkt.data.length) price = parseFloat(dataMkt.data[0].close);
+  } else {
+    const resFinn = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`);
+    const dataFinn = await resFinn.json();
+    price = parseFloat(dataFinn.c);
+  }
+  if (!isNaN(price)) {
+    const symbols = { USD: '$', PLN: 'zł', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF' };
+    const sym = symbols[currency] || (currency ? currency + ' ' : '');
+    el.textContent = `${ticker}  ${sym}${price.toFixed(2)}`;
+  } else {
+    el.textContent = `${ticker}`;
+  }
+} catch(err) {
+  console.error('Error fetching live price for', ticker, err);
+}
+
           } else {
             el.textContent = `${ticker}`;
           }
@@ -2411,6 +2593,381 @@ function exportHtmlWithKey(apiKey) {
 </script>
 
 
+
+
+
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  function parseData(symbol) {
+    const rows = document.querySelectorAll(`[data-symbol="${symbol}"] .transaction-list tr`);
+    const labels = [], data = [];
+    rows.forEach(row => {
+      const date = row.querySelector('.date').innerText;
+      const price = parseFloat(row.querySelector('.price').innerText.replace(',', '.'));
+      labels.push(date);
+      data.push(price);
+    });
+    return { labels, data };
+  }
+
+  function initChart(canvas, symbol) {
+    const ctx = canvas.getContext('2d');
+    const { labels, data } = parseData(symbol);
+    new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: symbol, data }] },
+      options: {
+        plugins: {
+          datalabels: { align: 'end', anchor: 'end' },
+          annotation: {
+            annotations: {
+              zone1: { type: 'box', yMin: Math.min(...data), yMax: data[0], backgroundColor: 'rgba(0, 255, 0, 0.1)' },
+              zone2: { type: 'box', yMin: data[0], yMax: Math.max(...data), backgroundColor: 'rgba(255, 0, 0, 0.1)' }
+            }
+          }
+        },
+        scales: { x: { display: true }, y: { display: true } }
+      }
+    });
+  }
+
+  document.querySelectorAll('.company').forEach(function(companyEl) {
+    const symbol = companyEl.getAttribute('data-symbol');
+    const listEl = companyEl.querySelector('.transaction-list');
+    const btn = document.createElement('button');
+    btn.innerText = 'Pokaż wykres';
+    btn.style = 'margin: 10px; padding: 5px 10px;';
+    btn.addEventListener('click', function() {
+      if (!companyEl.querySelector('canvas')) {
+        const canvas = document.createElement('canvas');
+        companyEl.appendChild(canvas);
+        initChart(canvas, symbol);
+      }
+    });
+    companyEl.appendChild(btn);
+  });
+});
+</script>
+
+
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  function parseData(symbol) {
+    const rows = document.querySelectorAll(`[data-symbol="${symbol}"] .transaction-list tr`);
+    const labels = [], data = [];
+    rows.forEach(row => {
+      const date = row.querySelector('.date').innerText;
+      const price = parseFloat(row.querySelector('.price').innerText.replace(',', '.'));
+      labels.push(date);
+      data.push(price);
+    });
+    return { labels, data };
+  }
+
+  function initChart(container, symbol) {
+    container.innerHTML = ''; // Clear
+    const canvas = document.createElement('canvas');
+    container.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    const { labels, data } = parseData(symbol);
+    new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: symbol, data }] },
+      options: {
+        plugins: {
+          annotation: {
+            annotations: {
+              zone1: { type: 'box', yMin: Math.min(...data), yMax: data[0], backgroundColor: 'rgba(0, 255, 0, 0.1)' },
+              zone2: { type: 'box', yMin: data[0], yMax: Math.max(...data), backgroundColor: 'rgba(255, 0, 0, 0.1)' }
+            }
+          }
+        },
+        scales: { x: { display: true }, y: { display: true } }
+      }
+    });
+  }
+
+  // Add button and container for each company
+  document.querySelectorAll('.company').forEach(function(companyEl) {
+    const symbol = companyEl.getAttribute('data-symbol');
+    const btn = document.createElement('button');
+    btn.innerText = 'Pokaż wykres';
+    btn.style = 'margin: 10px; padding: 5px 10px;';
+    const chartContainer = document.createElement('div');
+    chartContainer.className = 'chart-container';
+    chartContainer.style = 'width: 100%; max-width: 600px; margin-top: 10px;';
+    btn.addEventListener('click', function() {
+      initChart(chartContainer, symbol);
+    });
+    companyEl.appendChild(btn);
+    companyEl.appendChild(chartContainer);
+  });
+});
+</script>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function generateChart(table, container) {
+        container.innerHTML = '';
+        const canvas = document.createElement('canvas');
+        container.appendChild(canvas);
+        const ctx = canvas.getContext('2d');
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        const labels = [], data = [];
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            const date = cells[2]?.innerText.trim();
+            const price = parseFloat(cells[1]?.innerText.replace(',', '.'));
+            if (date && !isNaN(price)) {
+                labels.push(date);
+                data.push(price);
+            }
+        });
+        if (!data.length) return;
+        const first = data[0], min = Math.min(...data), max = Math.max(...data);
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Cena zakupu', data }] },
+            options: {
+                plugins: {
+                    annotation: {
+                        annotations: {
+                            zone1: { type: 'box', yMin: min, yMax: first, backgroundColor: 'rgba(0,255,0,0.1)' },
+                            zone2: { type: 'box', yMin: first, yMax: max, backgroundColor: 'rgba(255,0,0,0.1)' }
+                        }
+                    }
+                },
+                scales: { x: { display: true }, y: { display: true } }
+            }
+        });
+    }
+
+    document.querySelectorAll('table').forEach((table) => {
+        const btn = document.createElement('button');
+        btn.innerText = 'Pokaż wykres';
+        btn.style = 'margin: 10px 0; padding: 5px 10px; display: block;';
+        const container = document.createElement('div');
+        container.style = 'width: 100%; max-width: 600px; margin-bottom: 20px;';
+        btn.addEventListener('click', () => generateChart(table, container));
+        table.parentNode.insertBefore(btn, table.nextSibling);
+        table.parentNode.insertBefore(container, btn.nextSibling);
+    });
+});
+</script>
+
+
+<!-- Chart.js -->
+
+
+
+
+
+
+
+
+<!-- Chart.js and Annotation Plugin -->
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('table').forEach(table => {
+    // Avoid duplicate buttons
+    if (table.nextElementSibling && table.nextElementSibling.classList.contains('chart-container')) return;
+    // Create button and container
+    const btn = document.createElement('button');
+    btn.innerText = 'Pokaż wykres';
+    btn.style = 'margin: 10px 0; padding: 5px 10px; display: block;';
+    const container = document.createElement('div');
+    container.className = 'chart-container';
+    container.style = 'width:100%; max-width:600px; margin-bottom:20px; height:400px; background:#fff; padding:1rem; box-shadow:0 2px 5px rgba(0,0,0,0.1); border-radius:8px;';
+    btn.addEventListener('click', function() {
+      // Clear previous chart
+      container.innerHTML = '';
+      const canvas = document.createElement('canvas');
+      container.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+      // Detect columns by header
+      const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.toLowerCase());
+      const buyIdx = headers.findIndex(h => h.includes('zakup') || h.includes('kupno'));
+      const sellIdx = headers.findIndex(h => h.includes('sprzedaż') || h.includes('sprzed'));
+      const dateIdx = headers.findIndex(h => h.includes('data'));
+      // Parse data rows
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      const labels = [], buyData = [], sellData = [];
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const date = cells[dateIdx]?.innerText.trim();
+        const buy = parseFloat(cells[buyIdx]?.innerText.replace(',', '.'));
+        const sell = parseFloat(cells[sellIdx]?.innerText.replace(',', '.'));
+        if (date && !isNaN(buy)) {
+          labels.push(date);
+          buyData.push(buy);
+          sellData.push(!isNaN(sell) ? sell : null);
+        }
+      });
+      // Create chart
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Cena zakupu', data: buyData, fill: false, tension: 0.1 },
+            { label: 'Cena sprzedaży', data: sellData, fill: false, tension: 0.1 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            annotation: {
+              annotations: {
+                zone1: { type: 'box', yMin: Math.min(...buyData), yMax: buyData[0], backgroundColor: 'rgba(0,255,0,0.1)' },
+                zone2: { type: 'box', yMin: buyData[0], yMax: Math.max(...buyData), backgroundColor: 'rgba(255,0,0,0.1)' }
+              }
+            }
+          },
+          scales: { x: { display: true }, y: { display: true } }
+        }
+      });
+    });
+    table.parentNode.insertBefore(btn, table.nextSibling);
+    table.parentNode.insertBefore(container, btn.nextSibling);
+  });
+});
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- INJECTION START -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  function getCurrentPriceFromPage() {
+    const spans = Array.from(document.querySelectorAll('span'));
+    for (const el of spans) {
+      const text = el.innerText.trim();
+      if (text.startsWith('Aktualna cena:')) {
+        const match = text.match(/Aktualna cena:\s*([0-9]+[\.,]?[0-9]*)/);
+        if (match) return parseFloat(match[1].replace(',', '.'));
+      }
+    }
+    return null;
+  }
+
+  function renderChart(table) {
+    if (table._charted) return;
+    table._charted = true;
+    const symbolHeader = table.previousElementSibling;
+    let symbol = '';
+    if (symbolHeader && symbolHeader.tagName === 'H2') {
+      symbol = symbolHeader.innerText.trim().split(' ')[0];
+    }
+    const container = document.createElement('div');
+    container.className = 'chart-container';
+    Object.assign(container.style, {
+      width:'100%', maxWidth:'800px', height:'500px', margin:'10px 0 30px',
+      padding:'1rem', background:'#fff', boxShadow:'0 2px 5px rgba(0,0,0,0.1)', borderRadius:'8px'
+    });
+    table.parentNode.insertBefore(container, table.nextSibling);
+
+    const currentPrice = getCurrentPriceFromPage();
+    const canvas = document.createElement('canvas');
+    canvas.style.width='100%'; canvas.style.height='100%';
+    container.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    // parse table data
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.toLowerCase());
+    const buyIdx = headers.findIndex(h=>h.includes('kupno')||h.includes('zakup'));
+    const sellIdx = headers.findIndex(h=>h.includes('sprzedaż')||h.includes('sprzed'));
+    const dateIdx = headers.findIndex(h=>h.includes('data'));
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const labels=[], buyData=[], sellData=[];
+    rows.forEach(row=>{
+      const cells=row.querySelectorAll('td');
+      const date=cells[dateIdx]?.innerText.trim();
+      const buy=parseFloat(cells[buyIdx]?.innerText.replace(',', '.'));
+      const sell=parseFloat(cells[sellIdx]?.innerText.replace(',', '.'));
+      if(date&&!isNaN(buy)){ labels.push(date); buyData.push(buy); sellData.push(!isNaN(sell)?sell:null); }
+    });
+
+    const allVals=buyData.concat(sellData.filter(v=>v!=null));
+    if(currentPrice!=null) allVals.push(currentPrice);
+    const minV=Math.min(...allVals)*0.9, maxV=Math.max(...allVals)*1.1;
+
+    const datasets=[
+      { label:'Cena zakupu', data:buyData, fill:false, borderColor:'green', backgroundColor:'green', tension:0.2, borderWidth:2 },
+      { label:'Cena sprzedaży', data:sellData, fill:false, borderColor:'red', backgroundColor:'red', tension:0.2, borderWidth:2 }
+    ];
+    if(currentPrice!=null){
+      const currArr=labels.map((_,i)=>i===labels.length-1?currentPrice:null);
+      datasets.push({
+        label:'Aktualna cena', data:currArr, type:'line',
+        borderDash:[10,5], pointBackgroundColor:'blue', pointRadius:8,
+        borderColor:'blue', fill:false, tension:0
+      });
+    }
+
+    new Chart(ctx, {
+      type:'line',
+      data:{ labels, datasets },
+      options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ min:minV, max:maxV } }, plugins:{ legend:{ position:'top' } } }
+    });
+  }
+
+  const observer=new MutationObserver(muts=>{
+    muts.forEach(m=>{
+      m.addedNodes.forEach(n=>{
+        if(n.tagName==='TABLE') renderChart(n);
+        else if(n.querySelectorAll) n.querySelectorAll('table').forEach(renderChart);
+      });
+    });
+  });
+  observer.observe(document.body, {childList:true, subtree:true});
+  document.querySelectorAll('table').forEach(renderChart);
+});
+</script>
+<!-- INJECTION END -->
 
 
 <script>
