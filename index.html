@@ -1,1 +1,224 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prosty Ticker – GPW + USA (2 pola)</title>
+  <style>
+    :root { font-family: system-ui, Arial, sans-serif; }
+    body { margin: 0; display: grid; place-items: center; min-height: 100vh; background: #0f172a; color: #e5e7eb; }
+    .card { width: min(920px, 96vw); background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    h1 { margin: 0 0 12px; font-size: 20px; color: #f3f4f6; }
+    .sub { color:#9ca3af; font-size: 13px; margin-top: 2px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    input, button {
+      background: #0b1220; color: #e5e7eb; border: 1px solid #25314b; border-radius: 12px;
+      padding: 12px 14px; font-size: 16px; outline: none;
+    }
+    input::placeholder { color: #94a3b8; }
+    button { cursor: pointer; font-weight: 700; }
+    .panel {
+      background: #0b1220; border: 1px solid #1f2937; border-radius: 14px; padding: 14px;
+    }
+    .panel h2 { font-size: 16px; margin: 0 0 8px; color:#cbd5e1; }
+    .price { margin-top: 6px; font-size: 38px; font-weight: 800; letter-spacing: .5px; }
+    .meta { margin-top: 4px; color: #9ca3af; font-size: 12px; }
+    .err { margin-top: 8px; color: #fca5a5; font-size: 13px; min-height: 1em; }
+    .ok { color: #22c55e; }
+    .bad { color: #ef4444; }
+    .hint { margin-top: 12px; color: #94a3b8; font-size: 12px; }
+    @media (max-width: 720px) {
+      .grid2 { grid-template-columns: 1fr; }
+      .price { font-size: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Prosty Ticker – GPW + USA (2 pola)</h1>
+    <div class="sub">Aktualizacja co 5 s. Wpisuj tickery bez sufiksów (np. <b>PCO</b>, <b>TSLA</b>). GPW używa bazowego symbolu, USA automatycznie dopisuje <code>.US</code>.</div>
 
+    <div class="row" style="margin-top:12px">
+      <button id="toggle">Start</button>
+      <button id="once">Odśwież teraz</button>
+    </div>
+
+    <div class="grid2" style="margin-top:14px">
+      <div class="panel" id="p_gpw">
+        <h2>GPW</h2>
+        <div class="row">
+          <input id="ticker_gpw" placeholder="Np. PCO, PKN, PKO, KGH..." autocapitalize="characters" />
+        </div>
+        <div class="price" id="out_gpw">—</div>
+        <div class="meta" id="meta_gpw"></div>
+        <div class="err" id="err_gpw"></div>
+      </div>
+
+      <div class="panel" id="p_usa">
+        <h2>USA</h2>
+        <div class="row">
+          <input id="ticker_us" placeholder="Np. TSLA, AAPL, MSFT..." autocapitalize="characters" />
+        </div>
+        <div class="price" id="out_us">—</div>
+        <div class="meta" id="meta_us"></div>
+        <div class="err" id="err_us"></div>
+      </div>
+    </div>
+
+    <div class="hint">
+      Źródło: publiczny CSV Stooq (<code>/q/l/?s=...&f=sd2t2ohlcvn&h&e=csv</code>). Uruchamiaj przez http/https (np. <code>python -m http.server 8000</code>), bo otwieranie z dysku <code>file://</code> bywa blokowane.
+    </div>
+  </div>
+
+<script>
+  // --- Minimalny parser CSV (z obsługą cudzysłowów) ---
+  function parseCSVLine(line) {
+    const out = [];
+    let cur = '', inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i], next = line[i+1];
+      if (ch === '"') {
+        if (inQuotes && next === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (ch === ',' && !inQuotes) {
+        out.push(cur); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  // --- DOM ---
+  const $toggle = document.getElementById('toggle');
+  const $once = document.getElementById('once');
+
+  const $tg = document.getElementById('ticker_gpw');
+  const $tu = document.getElementById('ticker_us');
+
+  const $out_g = document.getElementById('out_gpw');
+  const $meta_g = document.getElementById('meta_gpw');
+  const $err_g = document.getElementById('err_gpw');
+
+  const $out_u = document.getElementById('out_us');
+  const $meta_u = document.getElementById('meta_us');
+  const $err_u = document.getElementById('err_us');
+
+  // --- Stan ---
+  let timer = null;
+  let last = {
+    gpw: { symbol: '', price: null },
+    usa: { symbol: '', price: null },
+  };
+
+  // --- Helpers ---
+  function stooqUrl(symbol) {
+    return `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcvn&h&e=csv`;
+  }
+
+  async function fetchStooq(symbol) {
+    const res = await fetch(stooqUrl(symbol), { cache: 'no-store' });
+    const text = await res.text();
+    const lines = text.trim().split(/\\r?\\n/);
+    if (lines.length < 2) throw new Error('Niepoprawny CSV');
+    const row = parseCSVLine(lines[1]);
+    const [sym, date, time, o, h, l, c, v, name] = row;
+    if (!c || c === 'N/D') throw new Error('Brak notowań');
+    return { sym, date, time, o: +o, h: +h, l: +l, c: +c, v: +v, name };
+  }
+
+  function renderSide(side, data, err) {
+    const isUSA = (side === 'usa');
+    const $out = isUSA ? $out_u : $out_g;
+    const $meta = isUSA ? $meta_u : $meta_g;
+    const $err = isUSA ? $err_u : $err_g;
+
+    if (err) {
+      $err.textContent = err;
+      $out.textContent = '—';
+      $meta.textContent = '';
+      last[side].price = null;
+      return;
+    } else {
+      $err.textContent = '';
+    }
+
+    const currency = isUSA ? '$' : 'zł';
+    const prevPrice = last[side].symbol === data.sym ? last[side].price : null;
+    const delta = (prevPrice != null) ? (data.c - prevPrice) : 0;
+
+    let deltaHtml = '';
+    if (prevPrice != null && Math.abs(delta) > 0) {
+      const sign = delta > 0 ? '▲' : '▼';
+      const cls = delta > 0 ? 'ok' : 'bad';
+      const unit = isUSA ? '$' : '';
+      deltaHtml = ` <span class="${cls}">${sign} ${unit}${Math.abs(delta).toFixed(2)}</span>`;
+    }
+
+    $out.innerHTML = `${currency} ${data.c.toFixed(2)}${deltaHtml}`;
+    $meta.textContent = `${data.sym.toUpperCase()} • ${data.name || ''} • ${data.date} ${data.time}`;
+
+    last[side].symbol = data.sym;
+    last[side].price = data.c;
+  }
+
+  async function tick() {
+    const gpw = ($tg.value || '').trim().toLowerCase();
+    const usa = ($tu.value || '').trim().toLowerCase();
+
+    if (gpw) {
+      try {
+        const d = await fetchStooq(gpw); // GPW bez sufiksu
+        renderSide('gpw', d, null);
+      } catch (e) {
+        renderSide('gpw', null, (e && e.message) ? e.message : String(e));
+      }
+    } else {
+      renderSide('gpw', null, ''); // czyści err
+      $out_g.textContent = '—'; $meta_g.textContent = '';
+      last.gpw.price = null;
+    }
+
+    if (usa) {
+      try {
+        const d = await fetchStooq(usa + '.us'); // USA z .us
+        renderSide('usa', d, null);
+      } catch (e) {
+        renderSide('usa', null, (e && e.message) ? e.message : String(e));
+      }
+    } else {
+      renderSide('usa', null, '');
+      $out_u.textContent = '—'; $meta_u.textContent = '';
+      last.usa.price = null;
+    }
+  }
+
+  function start() {
+    if (timer) return;
+    tick();
+    timer = setInterval(tick, 5000);
+    $toggle.textContent = 'Stop';
+  }
+  function stop() {
+    if (!timer) return;
+    clearInterval(timer);
+    timer = null;
+    $toggle.textContent = 'Start';
+  }
+
+  // --- actions ---
+  $toggle.addEventListener('click', () => timer ? stop() : start());
+  $once.addEventListener('click', tick);
+
+  [$tg, $tu].forEach(inp => {
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { last.gpw.price = null; last.usa.price = null; tick(); }});
+  });
+
+  // Wstępne wartości (możesz zmienić)
+  $tg.value = 'PCO';
+  $tu.value = 'TSLA';
+</script>
+</body>
+</html>
