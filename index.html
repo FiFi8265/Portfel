@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Prosty Ticker – GPW + USA (2 pola, proxy CORS)</title>
+  <title>Prosty Ticker – GPW + USA (proxy-only, GitHub Pages)</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
   <style>
     :root { font-family: system-ui, Arial, sans-serif; }
     body { margin: 0; display: grid; place-items: center; min-height: 100vh; background: #0f172a; color: #e5e7eb; }
     .card { width: min(920px, 96vw); background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
-    h1 { margin: 0 0 12px; font-size: 20px; color: #f3f4f6; }
+    h1 { margin: 0 0 8px; font-size: 20px; color: #f3f4f6; }
     .sub { color:#9ca3af; font-size: 13px; margin-top: 2px; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -30,6 +30,7 @@
     .bad { color: #ef4444; }
     .hint { margin-top: 12px; color: #94a3b8; font-size: 12px; }
     .muted { color: #9ca3af; }
+    .badge { padding: 6px 8px; border:1px solid #374151; border-radius:10px; font-size:12px; }
     @media (max-width: 720px) {
       .grid2 { grid-template-columns: 1fr; }
       .price { font-size: 32px; }
@@ -38,13 +39,13 @@
 </head>
 <body>
   <div class="card">
-    <h1>Prosty Ticker – GPW + USA (2 pola, proxy CORS)</h1>
-    <div class="sub">Zadziała na GitHub Pages: używam publicznych proxy CORS. Wpisuj tickery <b>bez</b> sufiksów (np. <b>PCO</b> i <b>TSLA</b>). GPW używa bazowego symbolu, USA dopisuje <code>.US</code>.</div>
+    <h1>Prosty Ticker – GPW + USA (proxy-only, GitHub Pages)</h1>
+    <div class="sub">Ta wersja nigdy nie pyta bezpośrednio <code>stooq.com</code> (zawsze przez publiczne proxy). Wpisuj tickery <b>bez</b> sufiksów (np. <b>PCO</b>, <b>TSLA</b>).</div>
 
     <div class="row" style="margin-top:12px">
       <button id="toggle">Start</button>
       <button id="once">Odśwież teraz</button>
-      <span class="muted" id="proxyInfo"></span>
+      <span class="badge muted" id="proxyInfo">(brak)</span>
     </div>
 
     <div class="grid2" style="margin-top:14px">
@@ -70,13 +71,12 @@
     </div>
 
     <div class="hint">
-      Źródło: Stooq CSV (<code>/q/l/?s=...&amp;f=sd2t2ohlcvn&amp;h&amp;e=csv</code>). Na GitHub Pages bezpośredni fetch blokuje CORS, więc stosuję proxy:
-      <code>api.allorigins.win</code> → <code>corsproxy.io</code> (fallback).
+      Proxy kolejno: <code>api.allorigins.win</code> → <code>cors.isomorphic-git.org</code> → <code>corsproxy.io</code>. Jeśli wszystkie padną, zobacz sekcję Worker (prywatny proxy).
     </div>
   </div>
 
 <script>
-  // --- Minimalny parser CSV (z obsługą cudzysłowów) ---
+  // --- Minimalny parser CSV ---
   function parseCSVLine(line) {
     const out = [];
     let cur = '', inQuotes = false;
@@ -126,9 +126,8 @@
   async function fetchTextProxied(url) {
     const attempts = [
       { name: 'AllOrigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
+      { name: 'isomorphic-git', url: `https://cors.isomorphic-git.org/${encodeURIComponent(url)}` },
       { name: 'corsproxy.io', url: `https://corsproxy.io/?${encodeURIComponent(url)}` },
-      // Ostatnia próba bez proxy (zadziała lokalnie / na serwerze z odpowiednimi nagłówkami CORS)
-      { name: 'direct', url }
     ];
     let lastErr = null;
     for (const a of attempts) {
@@ -136,13 +135,13 @@
         const res = await fetch(a.url, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const txt = await res.text();
-        $proxyInfo.textContent = `(via ${a.name})`;
+        $proxyInfo.textContent = a.name;
         return txt;
       } catch (e) {
         lastErr = e;
       }
     }
-    throw lastErr || new Error('Wszystkie próby pobrania danych nie powiodły się');
+    throw lastErr || new Error('Wszystkie publiczne proxy odrzuciły zapytanie.');
   }
 
   async function fetchStooq(symbol) {
@@ -202,7 +201,7 @@
         renderSide('gpw', null, (e && e.message) ? e.message : String(e));
       }
     } else {
-      renderSide('gpw', null, ''); // czyści err
+      renderSide('gpw', null, '');
       $out_g.textContent = '—'; $meta_g.textContent = '';
       last.gpw.price = null;
     }
@@ -242,9 +241,38 @@
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { last.gpw.price = null; last.usa.price = null; tick(); }});
   });
 
-  // Wstępne wartości (możesz zmienić)
+  // Wstępne wartości
   $tg.value = 'PCO';
   $tu.value = 'TSLA';
 </script>
+
+<!--
+--- Alternatywa: prywatny Cloudflare Worker jako proxy (stabilniej) ---
+1) Wejdź na https://dash.cloudflare.com → Workers & Pages → Create Worker → Quick edit.
+2) Wklej poniższy kod i Deploy. Zanotuj adres, np. https://twoj-worker.workers.dev
+3) W HTML zmień fetchTextProxied na pobieranie z Twojego Workera, np. `${WORKER}/stooq?s=${symbol}`
+
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/stooq") {
+      const s = url.searchParams.get("s");
+      if (!s) return new Response("Missing s", { status: 400 });
+      const target = `https://stooq.com/q/l/?s=${encodeURIComponent(s)}&f=sd2t2ohlcvn&h&e=csv`;
+      const resp = await fetch(target, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const text = await resp.text();
+      return new Response(text, {
+        status: resp.status,
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "access-control-allow-origin": "*",
+          "cache-control": "no-store"
+        }
+      });
+    }
+    return new Response("ok");
+  }
+}
+-->
 </body>
 </html>
