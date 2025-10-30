@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Prosty Ticker – GPW + USA (proxy-only, GitHub Pages)</title>
+  <title>Prosty Ticker – GPW + USA (Cloudflare Worker)</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
   <style>
     :root { font-family: system-ui, Arial, sans-serif; }
@@ -35,17 +35,22 @@
       .grid2 { grid-template-columns: 1fr; }
       .price { font-size: 32px; }
     }
+    code.inline { background:#0b1220; border:1px solid #25314b; padding:2px 6px; border-radius:6px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Prosty Ticker – GPW + USA (proxy-only, GitHub Pages)</h1>
-    <div class="sub">Ta wersja nigdy nie pyta bezpośrednio <code>stooq.com</code> (zawsze przez publiczne proxy). Wpisuj tickery <b>bez</b> sufiksów (np. <b>PCO</b>, <b>TSLA</b>).</div>
+    <h1>Prosty Ticker – GPW + USA (Cloudflare Worker)</h1>
+    <div class="sub">
+      Wpisuj tickery <b>bez</b> sufiksów (np. <b>PCO</b>, <b>TSLA</b>).<br/>
+      <b>Krok 1:</b> Podmień stałą <code class="inline">WORKER</code> na adres swojego Workera (np. <code class="inline">https://twoj-worker.workers.dev</code>).<br/>
+      <b>Krok 2:</b> Wgraj plik na GitHub Pages – działa bez CORS, bo wszystko idzie przez Twojego Workera.
+    </div>
 
     <div class="row" style="margin-top:12px">
       <button id="toggle">Start</button>
       <button id="once">Odśwież teraz</button>
-      <span class="badge muted" id="proxyInfo">(brak)</span>
+      <span class="badge muted" id="proxyInfo">(Worker: not set)</span>
     </div>
 
     <div class="grid2" style="margin-top:14px">
@@ -71,11 +76,15 @@
     </div>
 
     <div class="hint">
-      Proxy kolejno: <code>api.allorigins.win</code> → <code>cors.isomorphic-git.org</code> → <code>corsproxy.io</code>. Jeśli wszystkie padną, zobacz sekcję Worker (prywatny proxy).
+      Worker endpoint do podmiany: w sekcji <b>Config</b> poniżej.
     </div>
   </div>
 
 <script>
+  // ======= CONFIG – PODMIEŃ NA SWÓJ ADRES WORKERA =======
+  const WORKER = "https://portfel.filip-podolski93.workers.dev"; // <- TU WKLEJ swój adres (bez końcowego slash)
+  // ======================================================
+
   // --- Minimalny parser CSV ---
   function parseCSVLine(line) {
     const out = [];
@@ -119,38 +128,24 @@
   };
 
   // --- Helpers ---
-  function stooqUrl(symbol) {
-    return `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcvn&h&e=csv`;
-  }
-
-  async function fetchTextProxied(url) {
-    const attempts = [
-      { name: 'AllOrigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
-      { name: 'isomorphic-git', url: `https://cors.isomorphic-git.org/${encodeURIComponent(url)}` },
-      { name: 'corsproxy.io', url: `https://corsproxy.io/?${encodeURIComponent(url)}` },
-    ];
-    let lastErr = null;
-    for (const a of attempts) {
-      try {
-        const res = await fetch(a.url, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const txt = await res.text();
-        $proxyInfo.textContent = a.name;
-        return txt;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw lastErr || new Error('Wszystkie publiczne proxy odrzuciły zapytanie.');
+  function stooqViaWorker(symbol) {
+    // Endpoint wystawiony w Workerze: /stooq?s=SYMBOL
+    return `${WORKER}/stooq?s=${encodeURIComponent(symbol)}`;
   }
 
   async function fetchStooq(symbol) {
-    const csv = await fetchTextProxied(stooqUrl(symbol));
-    const lines = csv.trim().split(/\\r?\\n/);
+    if (!WORKER || WORKER.includes("YOUR-WORKER-NAME")) {
+      throw new Error("Skonfiguruj WORKER w sekcji CONFIG u góry pliku.");
+    }
+    const res = await fetch(stooqViaWorker(symbol), { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Worker HTTP ${res.status}`);
+    const csv = await res.text();
+    const lines = csv.trim().split(/\r?\n/);
     if (lines.length < 2) throw new Error('Niepoprawny CSV');
     const row = parseCSVLine(lines[1]);
     const [sym, date, time, o, h, l, c, v, name] = row;
     if (!c || c === 'N/D') throw new Error('Brak notowań');
+    $proxyInfo.textContent = WORKER.replace(/^https?:\/\//, '');
     return { sym, date, time, o: +o, h: +h, l: +l, c: +c, v: +v, name };
   }
 
@@ -246,12 +241,7 @@
   $tu.value = 'TSLA';
 </script>
 
-<!--
---- Alternatywa: prywatny Cloudflare Worker jako proxy (stabilniej) ---
-1) Wejdź na https://dash.cloudflare.com → Workers & Pages → Create Worker → Quick edit.
-2) Wklej poniższy kod i Deploy. Zanotuj adres, np. https://twoj-worker.workers.dev
-3) W HTML zmień fetchTextProxied na pobieranie z Twojego Workera, np. `${WORKER}/stooq?s=${symbol}`
-
+<!-- Cloudflare Worker (wklej w edytorze Workera i Deploy):
 export default {
   async fetch(request) {
     const url = new URL(request.url);
