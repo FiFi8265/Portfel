@@ -6360,6 +6360,7 @@ function djb2(str){
 window.__dirtySince = null;
 window.__lastUploadHash = null;
 window.__isSyncing = false;
+window.__syncDisabled = false;
 window.__deviceId = getDeviceId();
 window.__markDirty = function(){
   window.__dirtySince = Date.now();
@@ -6375,14 +6376,24 @@ async function hardUpload(){
       window.setSyncStatus('syncing');
       await db.collection(FB_COL).doc(FB_DOC).set(data, {merge:false});
     try{
-  const raw2 = localStorage.getItem(LS_KEY) || '';
-  window.__lastUploadHash = djb2(raw2);
-}catch(_){}
-window.__dirtySince = null;
+      const raw2 = localStorage.getItem(LS_KEY) || '';
+      window.__lastUploadHash = djb2(raw2);
+    }catch(_){}
+    window.__dirtySince = null;
       window.__lastSyncAt = Date.now(); window.setSyncStatus('ok');
       return true;
     }catch(e){
-      console.warn("UPLOAD error:", e); window.setSyncStatus('error'); alert("Błąd zapisu: " + (e && e.message || e)); return false;
+      console.warn("UPLOAD error:", e);
+      window.setSyncStatus('error');
+      try{
+        const code = (e && (e.code || e.message || e.toString())) || '';
+        if (typeof code === 'string' && code.indexOf('resource-exhausted') !== -1){
+          window.__syncDisabled = true;
+          try{ stopAutoSync(); }catch(_){}
+        }
+      }catch(_){}
+      alert("Błąd zapisu: " + (e && e.message || e));
+      return false;
     }
   }
 
@@ -6508,7 +6519,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
         if (window.__autoSyncTimer) return;
         window.__autoSyncTimer = setInterval(async ()=>{
           try{
-            if (!AUTO_SYNC_ENABLED) return;
+            if (!AUTO_SYNC_ENABLED || window.__syncDisabled) return;
             if (window.__isSyncing) return;
             if (!navigator.onLine) return;
             const raw = localStorage.getItem(LS_KEY) || '';
