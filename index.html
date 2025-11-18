@@ -6374,8 +6374,11 @@ async function hardUpload(){
     try{
       window.setSyncStatus('syncing');
       await db.collection(FB_COL).doc(FB_DOC).set(data, {merge:false});
-    try{ window.__lastUploadHash = djb2(JSON.stringify(data)); }catch(_){}
-    window.__dirtySince = null;
+    try{
+  const raw2 = localStorage.getItem(LS_KEY) || '';
+  window.__lastUploadHash = djb2(raw2);
+}catch(_){}
+window.__dirtySince = null;
       window.__lastSyncAt = Date.now(); window.setSyncStatus('ok');
       return true;
     }catch(e){
