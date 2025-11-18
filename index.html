@@ -1143,7 +1143,7 @@
     }
     header{
       display:flex; align-items:center; justify-content:space-between;
-      padding:14px 18px; position:sticky; top:0; z-index:5;
+      padding:14px 18px; position:static; top:0; z-index:5;
       background: linear-gradient(0deg, rgba(15,23,42,.6), rgba(15,23,42,.6));
       backdrop-filter: blur(8px);
       border-bottom: 1px solid #111827;
@@ -1217,7 +1217,7 @@
     .modal{
       color: var(--text);
  background: linear-gradient(180deg, rgba(17,24,39,.98), rgba(15,23,42,.98)); border:1px solid #334155; border-radius:16px; width:min(720px, 96vw); box-shadow: var(--shadow); }
-    .modal header{ position:sticky; top:0; background:transparent; box-shadow:none; border:none; padding:14px; }
+    .modal header{ position:static; top:0; background:transparent; box-shadow:none; border:none; padding:14px; }
     .modal .content{ padding:14px; }
     .modal footer{ display:flex; gap:8px; justify-content:flex-end; padding:14px; }
     .small{ font-size:12px; color:var(--muted); }
@@ -2466,6 +2466,7 @@ function ensureBuyLotIdInTx(tx){
     const lotIdStable = tx.lotId;
     const lot = { lotId: lotIdStable, date: tx.date || today(), qty: q, unitCost: p + (f/q||0), rawPrice: p, fees: f, note: tx.note||"", targetPct: (tx.targetPct??null), targetPrice: (tx.targetPrice??null), buyTargetPct: (tx.buyTargetPct??null), buyTargetPrice: (tx.buyTargetPrice??null) };
     state.holdings[tkr].lots.push(lot);
+    __gt_updateActiveTargetLotForTicker(state.holdings[tkr]);
   }
   function applySell(state, pf, tx){
   const tkr = tx.ticker.trim().toUpperCase();
@@ -2511,6 +2512,7 @@ function ensureBuyLotIdInTx(tx){
     }
   }
   book.lots = book.lots.filter(l=>l.qty>1e-9);
+  __gt_updateActiveTargetLotForTicker(book);
   // Mutate tx to keep derived fields consistent
   tx.qty = links.reduce((a,b)=>a+b.qty,0);
   tx.price = pSell;
@@ -2528,6 +2530,7 @@ function applyTransferCompanyIn(state, pf, tx){
     const lotId = tx.newLotId || tx.lotId || id();
     const lot = { lotId, date: tx.date || today(), qty: q, unitCost: uc, rawPrice: uc, fees: Number(tx.fees)||0, note: tx.note||"" };
     state.holdings[tkr].lots.push(lot);
+    __gt_updateActiveTargetLotForTicker(state.holdings[tkr]);
   }
 
 function applyTransferCompanyOut(state, pf, tx){
@@ -2619,6 +2622,12 @@ function applyTransferCompanyOut(state, pf, tx){
 pf.__errors = Array.isArray(state.__errors) ? state.__errors : [];
     pf.cash = state.cash;
     pf.holdings = state.holdings;
+    try{
+      for(const book of Object.values(pf.holdings||{})){
+        __gt_updateActiveTargetLotForTicker(book);
+      }
+    }catch(_){}
+
     pf.updatedAt = new Date().toISOString();
   }
   function getPf(id){ return DB.portfolios.find(p=>p.id===id) || null; }
@@ -2871,6 +2880,7 @@ async function buy(pfId, {ticker, date, qty, price, fees, note, targetPct, targe
     pf.holdings[ticker] ||= { lots: [] };
     const lot = { lotId: id(), date: date || today(), qty: q, unitCost: p + (f/q||0), rawPrice: p, fees: f, note: note||"", targetPct: (targetPct!==undefined && targetPct!=="" ? Number(targetPct) : null), targetPrice: (targetPrice!==undefined && targetPrice!=="" ? Number(targetPrice) : null), buyTargetPct: (buyTargetPct!==undefined && buyTargetPct!=="" ? Number(buyTargetPct) : null), buyTargetPrice: (buyTargetPrice!==undefined && buyTargetPrice!=="" ? Number(buyTargetPrice) : null) };
     pf.holdings[ticker].lots.push(lot);
+    __gt_updateActiveTargetLotForTicker(pf.holdings[ticker]);
     pf.transactions.unshift({ id:id(), type:"buy", date: date || today(), ticker, qty:q, price:p, fees:f, note: note, lotId: lot.lotId, targetPct: lot.targetPct, targetPrice: lot.targetPrice, buyTargetPct: lot.buyTargetPct, buyTargetPrice: lot.buyTargetPrice });
     pf.updatedAt = new Date().toISOString(); try { rebuildPortfolio(pf); } catch(_) {} save(); render();
   }
@@ -2907,6 +2917,7 @@ async function buy(pfId, {ticker, date, qty, price, fees, note, targetPct, targe
       lot.qty -= a.qty;
     }
     book.lots = book.lots.filter(l=>l.qty>0.0000001);
+    __gt_updateActiveTargetLotForTicker(book);
     // Add cash
     pf.cash += (proceeds - f);
     // Record TX
@@ -3785,6 +3796,7 @@ try{
 let nearestDist = Infinity;
 let statusRank = -1; // 3: hit-sell, 2: hit-buy, 1: near-sell, 0: near-buy
 for(const l of lots){
+  if(l && l.autoMutedForTargets) continue;
   l._ticker = ticker;
   const sellT = computeTargetPrice(l);
   const buyT  = computeBuyTargetPrice(l);
@@ -3836,7 +3848,8 @@ for(const l of lots){
 
       const lotRowsArr = lots.map((l,i)=>{
         const t = computeTargetPrice(l);
-        const st = targetStatus(l);
+        l._ticker = ticker;
+        const st = (l && l.autoMutedForTargets) ? {state:"none"} : targetStatus(l);
         const cls = st.state==="hit" ? (st.kind==="sell"?"hit-target-sell":"hit-target-buy") : (st.state==="near" ? (st.kind==="sell"?"near-target-sell":"near-target-buy") : "");
         return (
           `<tr data-lotid="${l.lotId}" class="${cls}">`+
@@ -3892,7 +3905,7 @@ for(const l of lots){
   const __arrow = (__tr===1)?'<span class="change-arrow up">▲</span>':(__tr===-1)?'<span class="change-arrow down">▼</span>':'';
   return (__ch!=null) ? (__arrow + "<span class='pct-badge "+(__ch>=0?"pct-pos ok-text":"pct-neg danger-text")+"'>"+fmtPct(__ch)+"</span>") : "—"; 
 })()}</td>`+
-            `<td>${(()=>{ if(nearestTarget==null) return "—";  let kind=null, best=Infinity;  for(const l of lots){    const s=computeTargetPrice(l); if(s!=null){ const d=Math.abs((nearestTarget-s)/nearestTarget); if(d<best){ best=d; kind='sell'; } }    const b=computeBuyTargetPrice(l); if(b!=null){ const d=Math.abs((nearestTarget-b)/nearestTarget); if(d<best){ best=d; kind='buy'; } }  }  const lbl = kind==='sell'?'cel sprzedaży':(kind==='buy'?'cel zakupu':'');  return __go_fmtCurrency(nearestTarget, pf.currency) + (lbl?`<div class="small" style="opacity:.75; ${kind==='sell'?'color:#16a34a':(kind==='buy'?'color:#dc2626':'')}">${lbl}</div>`:""); })()}</td>`+
+            `<td>${(()=>{ if(nearestTarget==null) return "—";  let kind=null, best=Infinity;  for(const l of lots){    if(l && l.autoMutedForTargets) continue;    const s=computeTargetPrice(l); if(s!=null){ const d=Math.abs((nearestTarget-s)/nearestTarget); if(d<best){ best=d; kind='sell'; } }    const b=computeBuyTargetPrice(l); if(b!=null){ const d=Math.abs((nearestTarget-b)/nearestTarget); if(d<best){ best=d; kind='buy'; } }  }  const lbl = kind==='sell'?'cel sprzedaży':(kind==='buy'?'cel zakupu':'');  return __go_fmtCurrency(nearestTarget, pf.currency) + (lbl?`<div class="small" style="opacity:.75; ${kind==='sell'?'color:#16a34a':(kind==='buy'?'color:#dc2626':'')}">${lbl}</div>`:""); })()}</td>`+
             `<td>${(()=>{ const p=lastPrice; const t=nearestTarget; if(p==null||t==null||t<=0) return "—"; const dist = Math.abs(p - t) / t; const pctStr = (dist*100).toFixed(2) + "%"; const localTol = (Number(DB.settings.approachTolerancePct)||1)/100; const cls = (dist<=1e-6) ? "ok-text" : (dist <= (localTol/2) ? "warn-strong-text" : "warn-text"); return `<span class="${cls}">${pctStr}</span>`; })()}</td>`+
             `<td><span class="small">${statusClass? (statusClass==="hit-target"?"🎯 cel osiągnięty":"⏳ blisko celu"):"—"}</span></td>`+
             `<td class="row" style="gap:6px"><button class="btn danger del-company" data-ticker="${__esc(ticker)}">🗑</button> <button class="btn ghost tv-link" data-ticker="${__esc(ticker)}" title="TradingView">📈</button> <button class="btn ghost info-company" data-ticker="${__esc(ticker)}">ℹ️</button></td>`+
@@ -4283,7 +4296,29 @@ function startPollingQuotes(){
   quoteTimer = setInterval(doPoll, secs*1000); // I ustaw interwał
 }
 
-  function computeTargetPrice(lot){
+  
+function __gt_updateActiveTargetLotForTicker(book){
+  try{
+    if(!book || !Array.isArray(book.lots)) return;
+    let activeIndex = -1;
+    for(let i = book.lots.length - 1; i >= 0; i--){
+      const lot = book.lots[i];
+      if(!lot) continue;
+      const q = Number(lot.qty)||0;
+      if(q > 1e-9){
+        activeIndex = i;
+        break;
+      }
+    }
+    for(let i = 0; i < book.lots.length; i++){
+      const lot = book.lots[i];
+      if(!lot) continue;
+      lot.autoMutedForTargets = (activeIndex !== -1 && i !== activeIndex);
+    }
+  }catch(_){}
+}
+
+function computeTargetPrice(lot){
     // Sprzedaż (take-profit)
     if(lot?.targetPrice && Number(lot.targetPrice)>0) return Number(lot.targetPrice);
     if(lot?.targetPct && Number(lot.targetPct)!=0){
@@ -4300,7 +4335,7 @@ function startPollingQuotes(){
     return null;
   }
 
-function targetStatus(lot){ if(lot && lot.muted) return {state:'none'}; 
+function targetStatus(lot){ if(lot && (lot.muted || lot.autoMutedForTargets)) return {state:'none'}; 
   const price = getQuote(lot._ticker||"");
   const sellT = computeTargetPrice(lot);
   const buyT  = computeBuyTargetPrice(lot);
@@ -4343,6 +4378,7 @@ function targetStatus(lot){ if(lot && lot.muted) return {state:'none'};
     const price = getQuote(ticker);
     if(price==null) continue;
     for(const l of lots){
+      if(l && l.autoMutedForTargets) continue;
       const sellT = computeTargetPrice(l);
       const buyT  = computeBuyTargetPrice(l);
       if(sellT!=null){
@@ -6291,9 +6327,15 @@ async function logAlarmEvent(data){
     if(pack.state)  pack.state  = String(pack.state||'').toLowerCase();
     // Add createdAt server timestamp if available, else client
     try{
-      pack.createdAt = (firebase?.firestore?.FieldValue?.serverTimestamp && firebase.firestore.FieldValue.serverTimestamp()) || new Date();
+      const nowClient = new Date();
+      // Zapisujemy również znacznik czasu po stronie klienta,
+      // żeby w trybie stub (bez serverTimestamp/toDate) mieć normalną datę.
+      pack.createdAtClient = nowClient.toISOString();
+      pack.createdAt = (firebase?.firestore?.FieldValue?.serverTimestamp && firebase.firestore.FieldValue.serverTimestamp()) || nowClient;
     }catch(_){
-      pack.createdAt = new Date();
+      const nowFallback = new Date();
+      pack.createdAtClient = nowFallback.toISOString();
+      pack.createdAt = nowFallback;
     }
     await db.collection('alerts').add(pack);
   }catch(e){
@@ -6953,6 +6995,26 @@ async function renderAlerts(){
   const res = await fetchAlertsPage({limit:200});
   let rows = res.items;
 
+  // Local fallback "clear history" cutoff – hide alerts logged before
+  // the last successful/attempted clear (when Firestore delete is blocked
+  // or db.batch() is not available in the stub).
+  try{
+    const hiddenSinceStr = localStorage.getItem('alerts_hidden_all_until');
+    const hiddenSince = Number(hiddenSinceStr);
+    // Jeśli użytkownik nigdy nie czyścił historii (brak / 0 / NaN), nie filtrujemy nic.
+    if(Number.isFinite(hiddenSince) && hiddenSince > 0){
+      rows = rows.filter(r => {
+        try{
+          const t = (r.createdAt instanceof Date) ? r.createdAt.getTime() : 0;
+          // Brak daty traktujemy jako "stary wpis" (schowany po czyszczeniu).
+          if(!t) return false;
+          return t > hiddenSince;
+        }catch(_){ return true; }
+      });
+    }
+  }catch(_){}
+
+
   // Filters
   const fScope = document.getElementById('alertsScope')?.value || '';
   const fState = document.getElementById('alertsState')?.value || '';
@@ -7182,8 +7244,18 @@ async function clearAlertsHistory(){
       localStorage.setItem(k,'0');
       if(typeof updateAlertsBadge==='function') updateAlertsBadge();
       if(typeof renderAlerts==='function') renderAlerts();
-      console.warn('clearAlertsHistory: using local fallback due to', e && (e.code || e.message || e.toString()));
-      alert('Brak uprawnień do kasowania w Firestore — wyczyszczono lokalnie (widok).');
+      // Logika komunikatu zależnie od typu błędu:
+      try{
+        const code = e && (e.code || e.message || e.toString() || '');
+        if(typeof code === 'string' &&
+           (code.includes('permission-denied') || code.includes('Missing or insufficient permissions'))){
+          console.warn('clearAlertsHistory: firestore permission error, using local fallback', code);
+          alert('Brak uprawnień do kasowania w Firestore — wyczyszczono lokalnie (widok).');
+        }else{
+          // Tryb stub / brak batch / inne łagodne błędy – czyścimy lokalnie po cichu
+          console.info('clearAlertsHistory: local fallback (stub / batch unavailable).');
+        }
+      }catch(_ignore){}
       return;
     }catch(_){}
   }
