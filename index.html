@@ -9250,12 +9250,37 @@ function showError(e) {
 
 
     let lastSnapshot = {};
+    let lastSentSnapshot = {};
     let timer = null;
-    const debounce = (uid) => { clearTimeout(timer); timer = setTimeout(async()=>{
-      try { const sanitized = sanitizeSnapshot(lastSnapshot);
-        await setDoc(doc(db, 'users', uid, 'gt', 'state'), { localStorage: sanitized, updatedAt: serverTimestamp(), version:1 }, { merge:true }); }
-      catch(e){ console.error(e); }
-    }, 250); };
+
+    const snapshotsEqual = (a, b) => {
+      try {
+        return JSON.stringify(a || {}) === JSON.stringify(b || {});
+      } catch (_e) {
+        return false;
+      }
+    };
+
+    const debounce = (uid) => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        try {
+          const sanitized = sanitizeSnapshot(lastSnapshot || {});
+          if (snapshotsEqual(sanitized, lastSentSnapshot)) {
+            // Nic się realnie nie zmieniło względem ostatnio wysłanego stanu – pomijamy zapis.
+            return;
+          }
+          await setDoc(
+            doc(db, 'users', uid, 'gt', 'state'),
+            { localStorage: sanitized, updatedAt: serverTimestamp(), version: 1 },
+            { merge: true }
+          );
+          lastSentSnapshot = sanitized;
+        } catch (e) {
+          console.error(e);
+        }
+      }, 1000);
+    };
 
 
     // Global helper for password change (used from iframe Settings)
@@ -9363,9 +9388,21 @@ function showError(e) {
       } else if (msg.type === 'storage_event') {
         const { key, value } = msg;
         if (!key || isReservedKey(key)) return;
-        if (value === null || typeof value === 'undefined') delete lastSnapshot[key];
-        else lastSnapshot[key] = value;
-        const u = auth.currentUser; if (u) debounce(u.uid);
+        let changed = false;
+        if (value === null || typeof value === 'undefined') {
+          if (key in lastSnapshot) {
+            delete lastSnapshot[key];
+            changed = true;
+          }
+        } else {
+          if (lastSnapshot[key] !== value) {
+            lastSnapshot[key] = value;
+            changed = true;
+          }
+        }
+        if (!changed) return;
+        const u = auth.currentUser;
+        if (u) debounce(u.uid);
       } else if (msg.type === 'storage_clear') {
         lastSnapshot = {};
         const u = auth.currentUser; if (u) debounce(u.uid);
@@ -9406,8 +9443,20 @@ function showError(e) {
       if (bgSvg) bgSvg.style.display = 'none';
       try {
         const snap = await getDoc(doc(db, 'users', user.uid, 'gt', 'state'));
-        lastSnapshot = (snap.exists() && snap.data().localStorage) ? snap.data().localStorage : {};
-      } catch(e) { lastSnapshot = {}; }
+        if (snap.exists() && snap.data().localStorage) {
+          lastSnapshot = snap.data().localStorage;
+        } else {
+          lastSnapshot = {};
+        }
+      } catch (e) {
+        console.error(e);
+        lastSnapshot = {};
+      }
+      try {
+        lastSentSnapshot = JSON.parse(JSON.stringify(lastSnapshot || {}));
+      } catch (_e) {
+        lastSentSnapshot = {};
+      }
       mount();
     });
   </script>
