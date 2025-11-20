@@ -971,6 +971,11 @@
       const msg=ev.data||{};
       if(msg.type==='storage_apply'&&msg.payload){
         Object.keys(msg.payload).forEach(k=>{ try{_set(mapKey(k),msg.payload[k]);}catch(_e){}; });
+        try{
+          if (typeof window.__GT_RELOAD_FROM_SNAPSHOT__ === 'function') {
+            window.__GT_RELOAD_FROM_SNAPSHOT__(msg.payload);
+          }
+        }catch(_e){}
       } else if(msg.type==='set_clear_on_exit'){ window.__GT_CLEAR_ON_EXIT__=!!msg.value; }
     });
     window.addEventListener('beforeunload',()=>{
@@ -2240,6 +2245,27 @@ dialog input[type="checkbox"], dialog input[type="radio"],
 <script>
 (()=>{
   const KEY = "portfele_firmy_v1";
+
+
+// Funkcja wywoływana z wrappera przy otrzymaniu snapshotu Firestore
+// payload: { [KEY]: JSON-string DB, ... }
+window.__GT_RELOAD_FROM_SNAPSHOT__ = function(payload){
+  try{
+    if (!payload) return;
+    const raw = payload[KEY];
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    DB = parsed;
+    // Zapisz do localStorage (wywoła setItem + ewentualny storage_event do wrappera)
+    try { save(); } catch(_e){}
+    // Przerysuj interfejs (portfele + wishlist)
+    try { render(); } catch(_e){}
+    try { renderWishlist(); updateWishlistBlinkState(); } catch(_e){}
+  }catch(e){
+    console.error('GT reload from Firestore snapshot error:', e);
+  }
+};
 
 
 // === [UNDO] Migawki bazy z TTL 2 dni ===
