@@ -2554,7 +2554,20 @@ function applyTransferCompanyIn(state, pf, tx){
     const uc = Number(tx.unitCost ?? tx.price ?? 0) || 0;
     state.holdings[tkr] ||= { lots: [] };
     const lotId = tx.newLotId || tx.lotId || id();
-    const lot = { lotId, date: tx.date || today(), qty: q, unitCost: uc, rawPrice: uc, fees: Number(tx.fees)||0, note: tx.note||"" };
+    const lot = {
+      lotId,
+      date: tx.date || today(),
+      qty: q,
+      unitCost: uc,
+      rawPrice: Number(tx.rawPrice ?? uc),
+      fees: Number(tx.fees)||0,
+      note: tx.note||"",
+      // przenosimy cele sprzedaży/kupna razem z partią
+      targetPct: (tx.targetPct!==undefined && tx.targetPct!==null && tx.targetPct!=="") ? Number(tx.targetPct) : null,
+      targetPrice: (tx.targetPrice!==undefined && tx.targetPrice!==null && tx.targetPrice!=="") ? Number(tx.targetPrice) : null,
+      buyTargetPct: (tx.buyTargetPct!==undefined && tx.buyTargetPct!==null && tx.buyTargetPct!=="") ? Number(tx.buyTargetPct) : null,
+      buyTargetPrice: (tx.buyTargetPrice!==undefined && tx.buyTargetPrice!==null && tx.buyTargetPrice!=="") ? Number(tx.buyTargetPrice) : null
+    };
     state.holdings[tkr].lots.push(lot);
     __gt_updateActiveTargetLotForTicker(state.holdings[tkr]);
   }
@@ -2826,37 +2839,41 @@ async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
   try{
     const transferDate = date || today();
     const linkId = id();
-    toPf.holdings[ticker] = toPf.holdings[ticker] || { lots: [] };
+    // Nie modyfikujemy bezpośrednio holdings docelowego – wszystko odbudujemy z transakcji,
+    // dzięki czemu cele sprzedaży/kupna pozostaną spójne.
     for(const lot of book.lots){
       const newLotId = id();
-      const newLot = {
-        ...lot,
-        lotId: newLotId,
-        transferredFrom: {
-          originalLotId: lot.lotId,
-          fromPortfolioId: fromPfId,
-          fromPortfolioName: fromPf.name,
-          transferDate: transferDate,
-          transferLinkId: linkId
-        }
-      };
-      toPf.holdings[ticker].lots.push(newLot);
+      const qty = Number(lot.qty)||0;
+      const rawPrice = Number(lot.rawPrice ?? lot.unitCost) || 0;
+      const unitCost = Number(lot.unitCost)||0;
+      const fees = Number(lot.fees)||0;
+      const targetPct = (lot.targetPct!==undefined && lot.targetPct!==null && lot.targetPct!=="") ? Number(lot.targetPct) : null;
+      const targetPrice = (lot.targetPrice!==undefined && lot.targetPrice!==null && lot.targetPrice!=="") ? Number(lot.targetPrice) : null;
+      const buyTargetPct = (lot.buyTargetPct!==undefined && lot.buyTargetPct!==null && lot.buyTargetPct!=="") ? Number(lot.buyTargetPct) : null;
+      const buyTargetPrice = (lot.buyTargetPrice!==undefined && lot.buyTargetPrice!==null && lot.buyTargetPrice!=="") ? Number(lot.buyTargetPrice) : null;
+
       toPf.transactions.unshift({
         id: id(),
         linkId: linkId,
         type: "transfer_company_in",
         date: transferDate,
         ticker: ticker,
-        qty: Number(lot.qty)||0,
-        price: Number(lot.rawPrice ?? lot.unitCost) || 0,
-        unitCost: Number(lot.unitCost)||0,
-        fees: Number(lot.fees)||0,
+        qty,
+        price: rawPrice,
+        unitCost,
+        rawPrice,
+        fees,
         note: `Transfer spółki ${ticker} z portfela "${fromPf.name}". ${note}`.trim(),
         counterpartyPortfolioId: fromPfId,
         originalLotId: lot.lotId,
-        newLotId: newLotId
+        newLotId: newLotId,
+        targetPct,
+        targetPrice,
+        buyTargetPct,
+        buyTargetPrice
       });
     }
+
     for(const lot of book.lots){
       fromPf.transactions.unshift({
         id: id(),
@@ -5857,8 +5874,14 @@ const pf = getPf(currentPfId); if(!pf) return;
     if(btn.classList.contains('lot-edit')){
       const ticker = btn.getAttribute('data-ticker');
       const lotId = btn.getAttribute('data-lot');
-      const txIndex = pf.transactions.findIndex(x=> x.type==='buy' && x.lotId===lotId);
-      if(txIndex<0) { alert('Nie znaleziono transakcji zakupu dla tej partii.'); return; }
+      // Szukamy zarówno zakupu, jak i ewentualnego transferu do portfela
+      const txIndex = pf.transactions.findIndex(x=> 
+        (
+          (x.type==='buy' && x.lotId===lotId) ||
+          (x.type==='transfer_company_in' && (x.newLotId===lotId || x.lotId===lotId))
+        )
+      );
+      if(txIndex<0) { alert('Nie znaleziono transakcji źródłowej dla tej partii.'); return; }
       const t = pf.transactions[txIndex];
       const formHTML = `<form>
           <label>Ticker</label>
@@ -5883,17 +5906,23 @@ const pf = getPf(currentPfId); if(!pf) return;
           <input name="note" value="${__esc(t.note||'')}" />
         </form>`;
       const data = await openModal({ title:"Edytuj zakup (partia)", innerHTML: formHTML, okText:"Zapisz"  });
-if(!data) return;
+      if(!data) return;
       t.ticker = (data.ticker||t.ticker||'').toUpperCase().trim();
       t.qty = Number(data.qty)||t.qty;
       t.price = Number(data.price)||t.price;
+      // W przypadku partii przeniesionej dbamy też o unitCost/rawPrice,
+      // żeby przebudowa portfela dała poprawne wyniki.
+      if(t.type === 'transfer_company_in'){
+        t.unitCost = t.price;
+        t.rawPrice = t.price;
+      }
       t.fees = Number(data.fees)||t.fees;
       t.date = data.date || t.date;
       t.note = data.note || "";
       t.targetPct = (data.targetPct!=='' && data.targetPct!==undefined) ? Number(data.targetPct) : null;
       t.targetPrice = (data.targetPrice!=='' && data.targetPrice!==undefined) ? Number(data.targetPrice) : null;
-        t.buyTargetPct = (data.buyTargetPct!=='' && data.buyTargetPct!==undefined) ? Number(String(data.buyTargetPct).replace(',', '.')) : null;
-        t.buyTargetPrice = (data.buyTargetPrice!=='' && data.buyTargetPrice!==undefined) ? Number(String(data.buyTargetPrice).replace(',', '.')) : null;
+      t.buyTargetPct = (data.buyTargetPct!=='' && data.buyTargetPct!==undefined) ? Number(String(data.buyTargetPct).replace(',', '.')) : null;
+      t.buyTargetPrice = (data.buyTargetPrice!=='' && data.buyTargetPrice!==undefined) ? Number(String(data.buyTargetPrice).replace(',', '.')) : null;
       try{
         rebuildPortfolio(pf);
       }catch(err){
