@@ -8669,6 +8669,98 @@ async function paintGlobalLineChart(Q, periodRange, base){
   }
 }
 window.addEventListener('resize', ()=>{ try{ drawGlobalLineChart(__GO_CHART_CACHE); }catch(_){ } });
+
+async function __go_maybeSaveDailySnapshot(comp){
+  try{
+    if(!comp || !comp.tot) return;
+
+    const SNAP_DAY_KEY = 'GO_DAILY_SNAPSHOT_LAST_DAY_V1';
+    const LS_FALLBACK_KEY = 'GO_DAILY_SNAPSHOTS_LOCAL_V1';
+
+    const now = new Date();
+    const todayKey = now.toISOString().slice(0,10); // YYYY-MM-DD
+    const hour = now.getHours();
+
+    const lastDay = (localStorage.getItem(SNAP_DAY_KEY)||'').trim();
+
+    // Decide which day this snapshot represents:
+    // - po 22: zapis dla dzisiejszej daty,
+    // - przed 22: jeśli brakuje wczorajszego snapshota, spróbuj uzupełnić wczorajszy,
+    //   inaczej poczekaj do 22 dzisiaj.
+    let targetDay = todayKey;
+    if(hour < 22){
+      const y = new Date(now.getTime() - 24*60*60*1000);
+      const yKey = y.toISOString().slice(0,10);
+      if(lastDay === yKey){
+        // Wczorajszy snapshot już jest, nie robimy nic przed 22.
+        return;
+      }
+      targetDay = yKey;
+    }
+
+    if(targetDay === lastDay) return; // nic do zrobienia
+
+    const t = comp.tot || {};
+    const payload = {
+      date: targetDay,
+      createdAt: new Date().toISOString(),
+      base: comp.base || ($('#go-base') && $('#go-base').value) || 'PLN',
+      totals: {
+        holdingsBase: Number(t.holdingsBase)||0,
+        cashBase: Number(t.cashBase)||0,
+        equityBase: Number(t.equityBase)||0,
+        costBase: Number(t.costBase)||0,
+        unrealBase: Number(t.unrealBase)||0,
+        dayMoveBase: Number(t.dayMoveBase)||0,
+        realizedGrossBase: Number(t.realizedGrossBase)||0,
+        realizedTaxBase: Number(t.realizedTaxBase)||0,
+        realizedNetBase: Number(t.realizedNetBase)||0
+      },
+      unrealPct: (comp.unrealPct!=null && isFinite(comp.unrealPct)) ? Number(comp.unrealPct) : null,
+      app: 'GT_TV_GO_v3',
+      source: 'global_overview_refresh'
+    };
+
+    let savedRemote = false;
+    try{
+      const root = (window.parent && window.parent !== window) ? window.parent : window;
+      if(root && typeof root.fbInit === 'function'){
+        const ctx = await root.fbInit();
+        const auth = ctx && ctx.auth;
+        const db   = ctx && ctx.db;
+        if(auth && auth.currentUser && db && typeof db.collection === 'function'){
+          const uid = auth.currentUser.uid;
+          await db.collection('users')
+            .doc(uid)
+            .collection('go_daily_snapshots')
+            .doc(targetDay)
+            .set(payload, { merge: true });
+          savedRemote = true;
+        }
+      }
+    }catch(e){
+      console.warn('[GO] Firestore daily snapshot error:', e);
+    }
+
+    // Fallback lokalny (np. tryb demo / brak Firestore) – tylko do wglądu
+    if(!savedRemote){
+      try{
+        const raw = localStorage.getItem(LS_FALLBACK_KEY);
+        let arr = raw ? JSON.parse(raw) : [];
+        if(!Array.isArray(arr)) arr = [];
+        arr.push(payload);
+        // Proste zabezpieczenie przed nieograniczonym rozrostem
+        while(arr.length > 365){ arr.shift(); }
+        localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(arr));
+      }catch(_){}
+    }
+
+    localStorage.setItem(SNAP_DAY_KEY, targetDay);
+  }catch(e){
+    console.warn('[GO] daily snapshot failed:', e);
+  }
+}
+
 // === [/GO] =====================================================================
 async function refresh(){loadPrefs();
     try{ const ps = document.getElementById('go-period'); if(ps){ ST.periodKey = ps.value||ST.periodKey||'all'; ST.periodRange = getPeriodRange(ST.periodKey); } }catch(_){}
@@ -8678,6 +8770,7 @@ async function refresh(){loadPrefs();
     for(const pf of pfs){ await ensureFx(pf.currency||'PLN', base); }
     const Q = await fetchAllQuotesCoop();
     const comp = await computeAll(Q, ST.periodRange);
+    try{ if(typeof __go_maybeSaveDailySnapshot==='function') __go_maybeSaveDailySnapshot(comp); }catch(_){ }
     paintTotals(comp); paintPortfolios(comp.results, comp.base); paintPositions(comp.results);
     const extra = computeClosedTradeStats(ST.periodRange);
     try{ ST.tpCount = countSellTxInRange(ST.DB, ST.periodRange); var __tp=document.getElementById('go-tp-count'); if(__tp){ __tp.textContent = String(ST.tpCount); } }catch(_){ }     paintExtraStats(extra);
