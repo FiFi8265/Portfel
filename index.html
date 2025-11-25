@@ -1263,14 +1263,14 @@
   #historyPanel.collapsed .chev { transform: rotate(-90deg); }
 
 
-/* === Colored blinking for BUY (green) and SELL (red) === */
+/* === Colored blinking for BUY (red) and SELL (green) === */
 @keyframes blinkRed { 0%{outline-color: transparent;} 50%{outline-color: rgba(220,38,38,0.9);} 100%{outline-color: transparent;} }
 @keyframes blinkGreen { 0%{outline-color: transparent;} 50%{outline-color: rgba(16,185,129,0.9);} 100%{outline-color: transparent;} }
 
-.hit-target-sell   { outline: 3px solid; animation: blinkRed 1s infinite;    }
-.near-target-sell  { outline: 2px dashed; animation: blinkRed 1.6s infinite; }
-.hit-target-buy    { outline: 3px solid; animation: blinkGreen 1s infinite;  }
-.near-target-buy   { outline: 2px dashed; animation: blinkGreen 1.6s infinite; }
+.hit-target-sell   { outline: 3px solid; animation: blinkGreen 1s infinite;    }
+.near-target-sell  { outline: 2px dashed; animation: blinkGreen 1.6s infinite; }
+.hit-target-buy    { outline: 3px solid; animation: blinkRed 1s infinite;  }
+.near-target-buy   { outline: 2px dashed; animation: blinkRed 1.6s infinite; }
 
 /* compatibility (old generic classes) */
 .hit-target { outline: 3px solid; animation: blinkRed 1.2s infinite; }
@@ -2058,7 +2058,7 @@ dialog input[type="checkbox"], dialog input[type="radio"],
         <div style="font-weight:700">Twoje portfele</div>
         <div class="small">Każdy portfel to osobna „firma” ze swoją strategią</div>
       </div>
-      <button class="btn ok" id="depositBtn" title="Szybki przelew gotówki do wybranego portfela">💰</button>
+      <button class="btn ok" id="depositBtn" title="Szybki przelew gotówki do wybranego portfela" style="display:none">💰</button>
     </div>
     <div class="portfolios" id="portfolioList"></div>
   </aside>
@@ -2193,7 +2193,7 @@ dialog input[type="checkbox"], dialog input[type="radio"],
               <div class="row">
                 <button class="btn ok" id="buyBtn">🛒 Zakup</button>
                 <button class="btn ok" id="sellBtn">💸 Sprzedaż (dowolne partie)</button>
-                <button class="btn secondary" id="withdrawBtn">🏧 Wypłata</button>
+                <button class="btn secondary" id="withdrawBtn" style="display:none">🏧 Wypłata</button>
               </div>
             </div>
           </div>
@@ -3902,8 +3902,8 @@ for(const l of lots){
             `<td>${__go_fmtCurrency(l.unitCost, pf.currency)}</td>`+
             `<td>${__go_fmtCurrency(l.qty*l.unitCost, pf.currency)}</td>`+
             `<td>`+
-            ( (t!=null?`<span class="sell-target" style="color:#dc2626">${__go_fmtCurrency(t, pf.currency)}</span>`:``) +
-              ( (computeBuyTargetPrice(l)!=null)?`<div class="buy-target" style="color:#16a34a">${__go_fmtCurrency(computeBuyTargetPrice(l), pf.currency)}</div>`:``) +
+            ( (t!=null?`<span class="sell-target" style="color:#16a34a">${__go_fmtCurrency(t, pf.currency)}</span>`:``) +
+              ( (computeBuyTargetPrice(l)!=null)?`<div class="buy-target" style="color:#dc2626">${__go_fmtCurrency(computeBuyTargetPrice(l), pf.currency)}</div>`:``) +
               (t==null && computeBuyTargetPrice(l)==null? '—': '')
             )+
             `</td>`+
@@ -7418,11 +7418,11 @@ service cloud.firestore {
 
 </style>
 
-<button id="go-fab" title="Globalny Przegląd – osobna zakładka">📈 Przegląd</button>
+<button id="go-fab" title="Statystyki – osobna zakładka">📈 Statystyki</button>
 
 <section id="go-tab-overlay" hidden>
   <div id="go-tab-header">
-    <h3 style="margin:0;font-size:18px">📈 Globalny Przegląd Majątku </h3>
+    <h3 style="margin:0;font-size:18px">📈 Globalne Statystyki Majątku </h3>
     <div style="display:flex;gap:8px;align-items:center">
 
 
@@ -8673,91 +8673,82 @@ window.addEventListener('resize', ()=>{ try{ drawGlobalLineChart(__GO_CHART_CACH
 async function __go_maybeSaveDailySnapshot(comp){
   try{
     if(!comp || !comp.tot) return;
-
-    const SNAP_DAY_KEY = 'GO_DAILY_SNAPSHOT_LAST_DAY_V1';
-    const LS_FALLBACK_KEY = 'GO_DAILY_SNAPSHOTS_LOCAL_V1';
-
     const now = new Date();
-    const todayKey = now.toISOString().slice(0,10); // YYYY-MM-DD
-    const hour = now.getHours();
+    // Zapisujemy max raz dziennie – po godzinie 22:00
+    if(now.getHours() < 22) return;
 
-    const lastDay = (localStorage.getItem(SNAP_DAY_KEY)||'').trim();
+    const pad = n => (n < 10 ? '0' + n : String(n));
+    const dayKey = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const SNAP_LS_KEY = 'GO_DAILY_SNAPSHOT_LAST_DAY_V1';
+    const SNAP_LOCAL_KEY = 'GO_DAILY_SNAPSHOTS_LOCAL_V1';
 
-    // Decide which day this snapshot represents:
-    // - po 22: zapis dla dzisiejszej daty,
-    // - przed 22: jeśli brakuje wczorajszego snapshota, spróbuj uzupełnić wczorajszy,
-    //   inaczej poczekaj do 22 dzisiaj.
-    let targetDay = todayKey;
-    if(hour < 22){
-      const y = new Date(now.getTime() - 24*60*60*1000);
-      const yKey = y.toISOString().slice(0,10);
-      if(lastDay === yKey){
-        // Wczorajszy snapshot już jest, nie robimy nic przed 22.
-        return;
-      }
-      targetDay = yKey;
-    }
+    try{
+      const last = localStorage.getItem(SNAP_LS_KEY);
+      if(last === dayKey) return;
+    }catch(_){}
 
-    if(targetDay === lastDay) return; // nic do zrobienia
-
-    const t = comp.tot || {};
+    const base = comp.base || (window.ST && ST.base) || 'PLN';
+    const tot = comp.tot || {};
     const payload = {
-      date: targetDay,
-      createdAt: new Date().toISOString(),
-      base: comp.base || ($('#go-base') && $('#go-base').value) || 'PLN',
-      totals: {
-        holdingsBase: Number(t.holdingsBase)||0,
-        cashBase: Number(t.cashBase)||0,
-        equityBase: Number(t.equityBase)||0,
-        costBase: Number(t.costBase)||0,
-        unrealBase: Number(t.unrealBase)||0,
-        dayMoveBase: Number(t.dayMoveBase)||0,
-        realizedGrossBase: Number(t.realizedGrossBase)||0,
-        realizedTaxBase: Number(t.realizedTaxBase)||0,
-        realizedNetBase: Number(t.realizedNetBase)||0
-      },
-      unrealPct: (comp.unrealPct!=null && isFinite(comp.unrealPct)) ? Number(comp.unrealPct) : null,
-      app: 'GT_TV_GO_v3',
-      source: 'global_overview_refresh'
+      uid: null,
+      base,
+      dayKey,
+      holdingsBase: Number(tot.holdingsBase || 0),
+      cashBase: Number(tot.cashBase || 0),
+      equityBase: Number(tot.equityBase || 0),
+      costBase: Number(tot.costBase || 0),
+      unrealBase: Number(tot.unrealBase || 0),
+      unrealPct: (comp.unrealPct === null || comp.unrealPct === undefined) ? null : Number(comp.unrealPct),
+      dayMoveBase: Number(tot.dayMoveBase || 0),
+      realizedGrossBase: Number(tot.realizedGrossBase || 0),
+      realizedTaxBase: Number(tot.realizedTaxBase || 0),
+      realizedNetBase: Number(tot.realizedNetBase || 0),
+      createdAtClient: now.toISOString(),
+      _device: (typeof getDeviceId === 'function' ? getDeviceId() : 'unknown')
     };
 
-    let savedRemote = false;
     try{
-      const root = (window.parent && window.parent !== window) ? window.parent : window;
-      if(root && typeof root.fbInit === 'function'){
-        const ctx = await root.fbInit();
-        const auth = ctx && ctx.auth;
-        const db   = ctx && ctx.db;
-        if(auth && auth.currentUser && db && typeof db.collection === 'function'){
-          const uid = auth.currentUser.uid;
-          await db.collection('users')
-            .doc(uid)
-            .collection('go_daily_snapshots')
-            .doc(targetDay)
-            .set(payload, { merge: true });
-          savedRemote = true;
-        }
+      const d = new Date(now);
+      d.setHours(0,0,0,0);
+      payload.dateMs = d.getTime();
+      payload.date = d;
+    }catch(_){}
+
+    // Próba zapisu do Firestore (jeśli dostępny)
+    try{
+      const ctx = await (typeof fbInit === 'function' ? fbInit() : null);
+      const auth = ctx && ctx.auth;
+      const db = ctx && ctx.db;
+      if(auth && auth.currentUser && db){
+        const uid = auth.currentUser.uid;
+        payload.uid = uid;
+        payload.createdAt = (firebase?.firestore?.FieldValue?.serverTimestamp && firebase.firestore.FieldValue.serverTimestamp()) || new Date();
+        const docId = `${uid}_${dayKey}_${base}`;
+        await db.collection('globalSnapshots').doc(docId).set(payload, { merge: true });
       }
     }catch(e){
-      console.warn('[GO] Firestore daily snapshot error:', e);
+      console.warn('[GO] daily snapshot remote failed', e);
     }
 
-    // Fallback lokalny (np. tryb demo / brak Firestore) – tylko do wglądu
-    if(!savedRemote){
-      try{
-        const raw = localStorage.getItem(LS_FALLBACK_KEY);
-        let arr = raw ? JSON.parse(raw) : [];
-        if(!Array.isArray(arr)) arr = [];
-        arr.push(payload);
-        // Proste zabezpieczenie przed nieograniczonym rozrostem
-        while(arr.length > 365){ arr.shift(); }
-        localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(arr));
-      }catch(_){}
+    // Zawsze trzymamy lokalny log (max 365 wpisów)
+    try{
+      const raw = localStorage.getItem(SNAP_LOCAL_KEY);
+      let arr = [];
+      if(raw){
+        try{
+          arr = JSON.parse(raw);
+          if(!Array.isArray(arr)) arr = [];
+        }catch(_){ arr = []; }
+      }
+      arr.push(payload);
+      if(arr.length > 365) arr = arr.slice(arr.length - 365);
+      localStorage.setItem(SNAP_LOCAL_KEY, JSON.stringify(arr));
+      localStorage.setItem(SNAP_LS_KEY, dayKey);
+    }catch(e){
+      console.warn('[GO] daily snapshot local failed', e);
     }
-
-    localStorage.setItem(SNAP_DAY_KEY, targetDay);
   }catch(e){
-    console.warn('[GO] daily snapshot failed:', e);
+    console.warn('[GO] daily snapshot error', e);
   }
 }
 
@@ -8770,10 +8761,10 @@ async function refresh(){loadPrefs();
     for(const pf of pfs){ await ensureFx(pf.currency||'PLN', base); }
     const Q = await fetchAllQuotesCoop();
     const comp = await computeAll(Q, ST.periodRange);
-    try{ if(typeof __go_maybeSaveDailySnapshot==='function') __go_maybeSaveDailySnapshot(comp); }catch(_){ }
     paintTotals(comp); paintPortfolios(comp.results, comp.base); paintPositions(comp.results);
     const extra = computeClosedTradeStats(ST.periodRange);
     try{ ST.tpCount = countSellTxInRange(ST.DB, ST.periodRange); var __tp=document.getElementById('go-tp-count'); if(__tp){ __tp.textContent = String(ST.tpCount); } }catch(_){ }     paintExtraStats(extra);
+    try{ if(typeof __go_maybeSaveDailySnapshot==='function') await __go_maybeSaveDailySnapshot(comp); }catch(_){ }
     await paintGlobalLineChart(Q, ST.periodRange, base);
     return comp;
   }
