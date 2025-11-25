@@ -2054,9 +2054,93 @@ dialog input[type="checkbox"], dialog input[type="radio"],
 <div class="layout">
   <aside class="sidebar card">
     <div class="head">
-      <div>
-        <div style="font-weight:700">Twoje portfele</div>
-        <div class="small">Każdy portfel to osobna „firma” ze swoją strategią</div>
+            <div class="portfolio-header-svg">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 380 80"
+          preserveAspectRatio="xMinYMid meet"
+          role="img"
+          aria-label="Twoje portfele. Każdy portfel to osobna firma ze swoją strategią"
+          style="width:100%; max-width:100%; height:auto; display:block;"
+        >
+          <defs>
+            <!-- Akcentowy gradient (zielono-turkusowy) -->
+            <linearGradient id="tpAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#22c55e"/>
+              <stop offset="50%" stop-color="#16a34a"/>
+              <stop offset="100%" stop-color="#0ea5e9"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Ikonka "wykresu / portfela" po lewej -->
+          <g transform="translate(4,16)">
+            <rect
+              x="0"
+              y="0"
+              width="40"
+              height="40"
+              rx="10"
+              ry="10"
+              fill="rgba(15,23,42,0.9)"
+              stroke="url(#tpAccent)"
+              stroke-width="1.4"
+            />
+            <rect x="8"  y="20" width="5"  height="12" rx="2" fill="url(#tpAccent)"/>
+            <rect x="17" y="14" width="5"  height="18" rx="2" fill="url(#tpAccent)"/>
+            <rect x="26" y="10" width="5"  height="22" rx="2" fill="url(#tpAccent)"/>
+          </g>
+
+          <!-- Główny tytuł -->
+          <text
+            x="60"
+            y="30"
+            style="
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              font-size: 24px;
+              font-weight: 650;
+              fill: #f9fafb;
+            "
+          >
+            Twoje
+            <tspan
+              dx="8"
+              style="
+                fill: url(#tpAccent);
+                font-weight: 750;
+              "
+            >
+              portfele
+            </tspan>
+          </text>
+
+          <!-- Podtytuł (dopasowany długością do podkreślenia) -->
+          <text
+            x="60"
+            y="50"
+            textLength="280"
+            lengthAdjust="spacing"
+            style="
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              font-size: 14px;
+              font-weight: 500;
+              fill: #d1d5db;
+            "
+          >
+            Każdy portfel to osobna „firma” ze swoją strategią
+          </text>
+
+          <!-- Podkreślenie dokładnie do końca napisu -->
+          <rect
+            x="60"
+            y="56"
+            width="280"
+            height="3"
+            rx="1.5"
+            ry="1.5"
+            fill="url(#tpAccent)"
+            opacity="0.9"
+          />
+        </svg>
       </div>
       <button class="btn ok" id="depositBtn" title="Szybki przelew gotówki do wybranego portfela" style="display:none">💰</button>
     </div>
