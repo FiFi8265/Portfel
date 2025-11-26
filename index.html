@@ -2479,7 +2479,11 @@ document.addEventListener('keydown', (e)=>{
   }catch(e){
     DB = defaultDB();
   }
-  const save = ()=> localStorage.setItem(KEY, JSON.stringify(DB));
+    const save = ()=> {
+    if(DB) DB._ts = Date.now(); // znacznik czasu ostatniej modyfikacji
+    localStorage.setItem(KEY, JSON.stringify(DB));
+  };
+
 
   const FINNHUB_DEMO_TOKEN = "d4dlki1r01qmhtc51ao0d4dlki1r01qmhtc51aog";
 
@@ -9538,27 +9542,75 @@ function showError(e) {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         try {
-          if (remoteStateUnknown) {
-            console.warn('GT sync: pomijam zapis, bo stan w chmurze jest nieznany (błąd odczytu).');
+          // 1. Przygotuj dane lokalne
+          const localPayload = sanitizeSnapshot(lastSnapshot || {});
+          
+          // Sprawdź, czy w ogóle są dane do zapisu
+          if (!localPayload || Object.keys(localPayload).length === 0) return;
+
+          // Wyciągnij czas modyfikacji danych lokalnych (z klucza portfele_firmy_v1)
+          let localTs = 0;
+          try {
+            const raw = localPayload["portfele_firmy_v1"];
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              localTs = Number(parsed._ts) || 0;
+            }
+          } catch (e) { console.warn("Błąd parsowania lokalnego TS", e); }
+
+          const ref = doc(db, 'users', uid, 'gt', 'state');
+
+          // 2. POBIERZ stan serwera przed zapisem (Safety Check)
+          const serverSnap = await getDoc(ref);
+          let serverTs = 0;
+          
+          if (serverSnap.exists()) {
+            const serverData = serverSnap.data();
+            try {
+              const sRaw = serverData.localStorage ? serverData.localStorage["portfele_firmy_v1"] : null;
+              if (sRaw) {
+                const sParsed = JSON.parse(sRaw);
+                serverTs = Number(sParsed._ts) || 0;
+              }
+            } catch (e) {}
+          }
+
+          // 3. PORÓWNANIE: Jeśli serwer jest nowszy o więcej niż 1 sekundę -> STOP i POBIERZ
+          if (serverTs > localTs + 1000) {
+            console.warn(`BLOKADA ZAPISU! Serwer ma nowsze dane (Server: ${serverTs} > Local: ${localTs}). Pobieram...`);
+            
+            // Nadpisz stan lokalny danymi z serwera
+            lastSnapshot = serverSnap.data().localStorage || {};
+            lastSentSnapshot = JSON.parse(JSON.stringify(lastSnapshot)); // zaktualizuj 'lastSent' żeby nie pętlić
+            
+            // Wyślij nowe dane do iFrame (aplikacji)
+            mount(); 
+            
+            // Opcjonalnie: Pokaż powiadomienie użytkownikowi
+            // alert("Pobrano nowszą wersję danych z innego urządzenia.");
+            return; 
+          }
+
+          // 4. Jeśli lokalne są nowsze (lub te same), zapisz bezpiecznie
+          if (snapshotsEqual(localPayload, lastSentSnapshot)) {
             return;
           }
-          const sanitized = sanitizeSnapshot(lastSnapshot || {});
-          if (snapshotsEqual(sanitized, lastSentSnapshot)) {
-            // Nic się realnie nie zmieniło względem ostatnio wysłanego stanu – pomijamy zapis.
-            return;
-          }
+
           const clientTs = Date.now();
           await setDoc(
-            doc(db, 'users', uid, 'gt', 'state'),
-            { localStorage: sanitized, updatedAt: serverTimestamp(), localUpdatedAt: clientTs, version: 1 },
+            ref,
+            { localStorage: localPayload, updatedAt: serverTimestamp(), localUpdatedAt: clientTs, version: 1 },
             { merge: true }
           );
-          lastSentSnapshot = sanitized;
+          
+          console.log("Zapisano zmiany w Firebase (Local był nowszy).");
+          lastSentSnapshot = localPayload;
           lastRemoteMeta.localUpdatedAt = clientTs;
+
         } catch (e) {
-          console.error(e);
+          console.error("Błąd synchronizacji:", e);
         }
-      }, 1000);
+      }, 1500); // Zwiększamy lekko opóźnienie do 1.5s dla bezpieczeństwa
     };
 
 
