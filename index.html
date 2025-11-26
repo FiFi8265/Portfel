@@ -9475,6 +9475,8 @@ function showError(e) {
     let lastSnapshot = {};
     let lastSentSnapshot = {};
     let timer = null;
+    let remoteStateUnknown = false;
+    let lastRemoteMeta = { updatedAt: 0, localUpdatedAt: 0 };
 
     const snapshotsEqual = (a, b) => {
       try {
@@ -9488,17 +9490,23 @@ function showError(e) {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         try {
+          if (remoteStateUnknown) {
+            console.warn('GT sync: pomijam zapis, bo stan w chmurze jest nieznany (błąd odczytu).');
+            return;
+          }
           const sanitized = sanitizeSnapshot(lastSnapshot || {});
           if (snapshotsEqual(sanitized, lastSentSnapshot)) {
             // Nic się realnie nie zmieniło względem ostatnio wysłanego stanu – pomijamy zapis.
             return;
           }
+          const clientTs = Date.now();
           await setDoc(
             doc(db, 'users', uid, 'gt', 'state'),
-            { localStorage: sanitized, updatedAt: serverTimestamp(), version: 1 },
+            { localStorage: sanitized, updatedAt: serverTimestamp(), localUpdatedAt: clientTs, version: 1 },
             { merge: true }
           );
           lastSentSnapshot = sanitized;
+          lastRemoteMeta.localUpdatedAt = clientTs;
         } catch (e) {
           console.error(e);
         }
@@ -9664,16 +9672,37 @@ function showError(e) {
       loginView.classList.add('hide');
       appContainer.classList.remove('hide');
       if (bgSvg) bgSvg.style.display = 'none';
+
+      // Zresetuj stan meta przed wczytaniem stanu z Firestore
+      remoteStateUnknown = false;
+      lastRemoteMeta = { updatedAt: 0, localUpdatedAt: 0 };
+
       try {
-        const snap = await getDoc(doc(db, 'users', user.uid, 'gt', 'state'));
-        if (snap.exists() && snap.data().localStorage) {
-          lastSnapshot = snap.data().localStorage;
+        const snapRef = doc(db, 'users', user.uid, 'gt', 'state');
+        const snap = await getDoc(snapRef);
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          lastSnapshot = data.localStorage || {};
+          const updatedAt = data.updatedAt;
+          let updatedAtMs = 0;
+          if (updatedAt && typeof updatedAt.toMillis === 'function') {
+            updatedAtMs = updatedAt.toMillis();
+          } else if (updatedAt && typeof updatedAt === 'object' && typeof updatedAt.at === 'string') {
+            updatedAtMs = Date.parse(updatedAt.at) || 0;
+          } else if (typeof updatedAt === 'string') {
+            updatedAtMs = Date.parse(updatedAt) || 0;
+          }
+          lastRemoteMeta = {
+            updatedAt: updatedAtMs,
+            localUpdatedAt: data.localUpdatedAt || 0
+          };
         } else {
           lastSnapshot = {};
         }
       } catch (e) {
         console.error(e);
         lastSnapshot = {};
+        remoteStateUnknown = true;
       }
       try {
         lastSentSnapshot = JSON.parse(JSON.stringify(lastSnapshot || {}));
