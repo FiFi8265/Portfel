@@ -2049,6 +2049,9 @@ dialog input[type="checkbox"], dialog input[type="radio"],
   
     <button class="btn ghost" id="firebaseDiagBtn" title="Sprawdź połączenie z Firestore">🧪 Test</button>
     
+    <span id="syncCheckLabel" style="margin-left:8px;font-size:12px;">
+      Synchronizacja: <span id="syncCheckValue" style="font-weight:600;color:#9ca3af;">?</span>
+    </span>
     </div>
 </header>
 <div class="layout">
@@ -6565,7 +6568,27 @@ async function hardUpload(){
   }
 
   
-  async function hardDiag(){
+  
+  function updateSyncCheckIndicator(ok){
+    try{
+      const wrap = document.getElementById('syncCheckLabel');
+      const val = document.getElementById('syncCheckValue');
+      if (!wrap || !val) return;
+      wrap.style.display = 'inline';
+      if (ok === true){
+        val.textContent = 'TAK';
+        val.style.color = '#10b981';
+      } else if (ok === false){
+        val.textContent = 'NIE';
+        val.style.color = '#ef4444';
+      } else {
+        val.textContent = '?';
+        val.style.color = '#9ca3af';
+      }
+    }catch(_e){}
+  }
+
+async function hardDiag(){
   function foldCounts(db){
     const out = { portfolios: 0, companies: 0, positions: 0 };
     try{
@@ -6592,7 +6615,18 @@ async function hardUpload(){
     console.log('Diag lokalnie:', {exists: !!localData, ...local});
   }catch(e){ console.warn('Błąd odczytu lokalnego:', e); }
 
-  const {db} = await fbInit(); if(!db) return false;
+  let syncOk = null;
+  try{
+    if (window.parent && typeof window.parent.__GT_GET_SYNC_OK__ === 'function') {
+      syncOk = !!window.parent.__GT_GET_SYNC_OK__();
+    }
+  }catch(_e){ syncOk = null; }
+
+  const {db} = await fbInit(); 
+  if(!db){ 
+    updateSyncCheckIndicator(false);
+    return false;
+  }
   try{
     window.setSyncStatus('syncing');
     await db.collection(FB_COL).doc(FB_DOC).set({_ping: Date.now(), _diag:'test connection'}, {merge:true});
@@ -6604,6 +6638,7 @@ async function hardUpload(){
 
     fbLog('Diag: zapis/odczyt OK', 'ok');
     window.setSyncStatus('ok');
+    updateSyncCheckIndicator(syncOk === false ? false : true);
 
     const msg = `Diagnostyka OK!
 
@@ -6617,19 +6652,30 @@ W chmurze:
 - Spółek (unikalne tickery): ${remote.companies}
 - Pozycji (lotów): ${remote.positions}
 
-Ostatni upload: ${lastTs}`;
+Ostatni upload: ${lastTs}
+
+Synchronizacja (konto multi-device): ${syncOk === null ? 'nieznana' : (syncOk ? 'TAK' : 'NIE')}`;
     alert(msg);
     return true;
   }catch(e){
     fbLog('Diag error: '+(e&&e.message||e), 'err');
     window.setSyncStatus('error');
     alert('Diag error: '+(e&&e.message||e));
+    updateSyncCheckIndicator(false);
     return false;
   }
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
+    try{
+      let initialOk = null;
+      if (window.parent && typeof window.parent.__GT_GET_SYNC_OK__ === 'function') {
+        initialOk = !!window.parent.__GT_GET_SYNC_OK__();
+      }
+      updateSyncCheckIndicator(initialOk);
+    }catch(_e){}
     const up = document.getElementById('firebaseUploadBtn');
+
     const down = document.getElementById('firebaseDownloadBtn');
     if (up) up.addEventListener('click', hardUpload);
     if (down) down.addEventListener('click', ()=>hardDownload(true));
@@ -9476,6 +9522,8 @@ function showError(e) {
     let lastSentSnapshot = {};
     let timer = null;
     let remoteStateUnknown = false;
+    window.__GT_GET_SYNC_OK__ = function(){ return !remoteStateUnknown; };
+
     let lastRemoteMeta = { updatedAt: 0, localUpdatedAt: 0 };
 
     const snapshotsEqual = (a, b) => {
