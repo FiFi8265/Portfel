@@ -2692,6 +2692,8 @@ function applyTransferCompanyOut(state, pf, tx){
     const a = Number(amount)||0;
     if(type==="deposit" || type==="transfer_in") state.cash += a;
     if(type==="withdraw" || type==="transfer_out") state.cash -= a;
+    // Zaokrąglenie gotówki do 2 miejsc po przecinku, żeby uniknąć błędów float
+    state.cash = Math.round((state.cash || 0) * 100) / 100;
   }
   function rebuildPortfolio(pf){
     // --- Preserve per-lot muted flags BEFORE rebuild (by stable lotId) ---
@@ -2750,7 +2752,7 @@ function applyTransferCompanyOut(state, pf, tx){
       }
     } catch (_) {}
 pf.__errors = Array.isArray(state.__errors) ? state.__errors : [];
-    pf.cash = state.cash;
+    pf.cash = Math.round((state.cash || 0) * 100) / 100;
     pf.holdings = state.holdings;
     try{
       for(const book of Object.values(pf.holdings||{})){
@@ -2808,7 +2810,7 @@ pf.__errors = Array.isArray(state.__errors) ? state.__errors : [];
 
     const pf = getPf(pfId); if(!pf) return;
     const amt = Number(amount)||0;
-    pf.cash += amt;
+    pf.cash = Math.round(((Number(pf.cash) || 0) + amt) * 100) / 100;
     pf.transactions.unshift({ id:id(), type:"deposit", date:today(), amount:amt, note });
     pf.updatedAt = new Date().toISOString(); try { rebuildPortfolio(pf); } catch(_) {} save(); render();
   }
@@ -2818,7 +2820,7 @@ pf.__errors = Array.isArray(state.__errors) ? state.__errors : [];
     const pf = getPf(pfId); if(!pf) return;
     const amt = Number(amount)||0;
     if(!DB.settings.allowNegativeCash && pf.cash < amt){ alert("Brak środków. Włącz opcję 'Zezwól na saldo ujemne' w Ustawieniach, jeśli chcesz kontynuować."); return; }
-    pf.cash -= amt;
+    pf.cash = Math.round(((Number(pf.cash) || 0) - amt) * 100) / 100;
     pf.transactions.unshift({ id:id(), type:"withdraw", date:today(), amount:amt, note });
     pf.updatedAt = new Date().toISOString(); try { rebuildPortfolio(pf); } catch(_) {} save(); render();
   }
@@ -2831,8 +2833,8 @@ pf.__errors = Array.isArray(state.__errors) ? state.__errors : [];
   const amt = Number(amount)||0;
   if(!from || !to) return alert("Nieprawidłowe portfele.");
   if(!DB.settings.allowNegativeCash && from.cash < amt){ alert("Brak środków w portfelu źródłowym."); return; }
-  from.cash -= amt;
-  to.cash += amt;
+  from.cash = Math.round(((Number(from.cash) || 0) - amt) * 100) / 100;
+  to.cash = Math.round(((Number(to.cash) || 0) + amt) * 100) / 100;
   const stamp = today();
   const linkId = id();
   from.transactions.unshift({ id:id(), linkId, type:"transfer_out", date:stamp, amount:amt, note, counterpartyPortfolioId: to.id });
@@ -2909,8 +2911,9 @@ async function transferCompanyDialog(fromPfId, ticker) {
   }
 }
 
+
 async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
-  try{ pushUndo({label:"Transfer sp\u00f3\u0142ki", kind:'tx'}); }catch(_){}
+  try{ pushUndo({label:"Transfer spółki", kind:'tx'}); }catch(_){}
 
   if(fromPfId === toPfId) return alert("Portfel źródłowy i docelowy są identyczne.");
   const fromPf = getPf(fromPfId);
@@ -2918,15 +2921,79 @@ async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
   if(!fromPf || !toPf) return alert("Błąd: nieprawidłowe portfele.");
   const book = (fromPf.holdings||{})[ticker];
   if(!book || !book.lots || !book.lots.length) return alert("Brak pakietów do przeniesienia.");
-  if(fromPf.currency !== toPf.currency) {
-    const proceed = confirm(
-      `Uwaga: Różne waluty!\n` +
-      `Z: ${fromPf.name} (${fromPf.currency})\n` +
-      `Do: ${toPf.name} (${toPf.currency})\n\n` +
-      `Czy kontynuować przeniesienie?`
-    );
-    if(!proceed) return;
+
+  // KLUCZOWA LOGIKA – automatyczny kurs FX:
+  //  • USD↔PLN: zawsze z internetu / cache, bez prompta
+  //  • inne pary: internet + ewentualnie ręczny prompt (fallback)
+  let fxRate = 1;
+  const fromCur = fromPf.currency || (DB.settings && DB.settings.currencyDefault) || "PLN";
+  const toCur   = toPf.currency   || (DB.settings && DB.settings.currencyDefault) || "PLN";
+
+  if(fromCur !== toCur){
+    const isUsdPln = (fromCur === 'USD' && toCur === 'PLN') || (fromCur === 'PLN' && toCur === 'USD');
+    let autoRate = null;
+
+    // 1) Najpierw spróbuj pobrać z internetu przez istniejącą logikę ensureFx (sekcja Statystyki)
+    try{
+      if(typeof ensureFx === 'function'){
+        autoRate = await ensureFx(fromCur, toCur);
+      }
+    }catch(_){}
+
+    if(Number.isFinite(autoRate) && autoRate > 0){
+      fxRate = autoRate;
+    }else if(isUsdPln){
+      // 2) Dla USD↔PLN – NIGDY nie pokazujemy prompta.
+      //    Użyj tego, co jest już w ST.FX lub localStorage, a jak się nie uda -> załóż 1.0
+      let cachedRate = null;
+
+      // 2a) Spróbuj odczytać z ST.FX (sekcja Statystyki)
+      try{
+        if (window.ST && ST.FX && ST.FX['USD'] && Number.isFinite(ST.FX['USD']['PLN']) && ST.FX['USD']['PLN'] > 0){
+          cachedRate = ST.FX['USD']['PLN'];
+        }
+      }catch(_){}
+
+      // 2b) Jak nie ma w ST.FX, spróbuj localStorage (oba klucze, które już są używane w appce)
+      if(!Number.isFinite(cachedRate) || cachedRate <= 0){
+        try{
+          const lsRaw = (localStorage.getItem('gt_fx_usd_pln') || localStorage.getItem('global_overview_fx_usdpln') || '').replace(',', '.').trim();
+          const lsVal = Number(lsRaw);
+          if(Number.isFinite(lsVal) && lsVal > 0){
+            cachedRate = lsVal;
+          }
+        }catch(_){}
+      }
+
+      // 2c) Jeśli nadal nic – absolutny fallback 1.0, ale nadal BEZ prompta
+      if(Number.isFinite(cachedRate) && cachedRate > 0){
+        fxRate = (fromCur === 'USD') ? cachedRate : (1 / cachedRate);
+      }else{
+        fxRate = 1; // wolimy 1, niż blokować transfer promptem
+      }
+    }else{
+      // 3) Inne pary walut – zostawiamy stary mechanizm z promptem jako fallback
+      const key = fromCur + "_" + toCur;
+      const last = (window.__LAST_EXCHANGE_RATE__ && window.__LAST_EXCHANGE_RATE__[key]) || "";
+      const rateStr = prompt(
+        `Przenosisz spółkę z portfela w ${fromCur} → ${toCur}.\n` +
+        `Podaj aktualny kurs ${fromCur} → ${toCur} (np. 1 ${fromCur} = 4.02 ${toCur}):`,
+        last
+      );
+      if(rateStr === null){
+        return; // anulowano
+      }
+      const parsed = parseFloat(String(rateStr).replace(",", "."));
+      if(!parsed || !isFinite(parsed) || parsed <= 0){
+        alert("Nieprawidłowy kurs.");
+        return;
+      }
+      fxRate = parsed;
+      window.__LAST_EXCHANGE_RATE__ = window.__LAST_EXCHANGE_RATE__ || {};
+      window.__LAST_EXCHANGE_RATE__[key] = fxRate;
+    }
   }
+
   try{
     const transferDate = date || today();
     const linkId = id();
@@ -2935,13 +3002,16 @@ async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
     for(const lot of book.lots){
       const newLotId = id();
       const qty = Number(lot.qty)||0;
-      const rawPrice = Number(lot.rawPrice ?? lot.unitCost) || 0;
-      const unitCost = Number(lot.unitCost)||0;
+      const srcUnitCost = Number(lot.unitCost)||0;
+      const srcRawPrice = Number(lot.rawPrice ?? lot.unitCost) || 0;
       const fees = Number(lot.fees)||0;
       const targetPct = (lot.targetPct!==undefined && lot.targetPct!==null && lot.targetPct!=="") ? Number(lot.targetPct) : null;
       const targetPrice = (lot.targetPrice!==undefined && lot.targetPrice!==null && lot.targetPrice!=="") ? Number(lot.targetPrice) : null;
       const buyTargetPct = (lot.buyTargetPct!==undefined && lot.buyTargetPct!==null && lot.buyTargetPct!=="") ? Number(lot.buyTargetPct) : null;
       const buyTargetPrice = (lot.buyTargetPrice!==undefined && lot.buyTargetPrice!==null && lot.buyTargetPrice!=="") ? Number(lot.buyTargetPrice) : null;
+
+      const unitCost = srcUnitCost * fxRate;
+      const rawPrice = srcRawPrice * fxRate;
 
       toPf.transactions.unshift({
         id: id(),
@@ -2961,7 +3031,12 @@ async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
         targetPct,
         targetPrice,
         buyTargetPct,
-        buyTargetPrice
+        buyTargetPrice,
+        fxRate,
+        srcCurrency: fromCur,
+        dstCurrency: toCur,
+        srcUnitCost,
+        srcRawPrice
       });
     }
 
@@ -2978,14 +3053,18 @@ async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
         fees: Number(lot.fees)||0,
         note: `Transfer spółki ${ticker} do portfela "${toPf.name}". ${note}`.trim(),
         counterpartyPortfolioId: toPfId,
-        lotId: lot.lotId
+        lotId: lot.lotId,
+        fxRate,
+        srcCurrency: fromCur,
+        dstCurrency: toCur
       });
     }
     delete fromPf.holdings[ticker];
     const now = new Date().toISOString();
     fromPf.updatedAt = now;
     toPf.updatedAt = now;
-    try { rebuildPortfolio(fromPf); rebuildPortfolio(toPf); } catch(_) {} save(); render();
+    try { rebuildPortfolio(fromPf); rebuildPortfolio(toPf); } catch(_) {}
+    save(); render();
     alert(
       `Transfer zakończony!\n\n` +
       `Spółka: ${ticker}\n` +
@@ -2999,6 +3078,9 @@ async function transferCompany(fromPfId, toPfId, ticker, date, note = "") {
   }
 }
 
+
+
+
 async function buy(pfId, {ticker, date, qty, price, fees, note, targetPct, targetPrice, buyTargetPct, buyTargetPrice}){
   try{ pushUndo({label:"Zakup", kind:'tx'}); }catch(_){}
 
@@ -3010,7 +3092,7 @@ async function buy(pfId, {ticker, date, qty, price, fees, note, targetPct, targe
     if(!ticker || q<=0 || p<=0){ return alert("Uzupełnij poprawnie: ticker, ilość, cenę."); }
     const cashOut = q*p + f;
     if(!DB.settings.allowNegativeCash && pf.cash < cashOut){ return alert("Brak środków na zakup (sprawdź saldo gotówki) lub zezwól na saldo ujemne w ustawieniach."); }
-    pf.cash -= cashOut;
+    pf.cash = Math.round(((Number(pf.cash) || 0) - cashOut) * 100) / 100;
     pf.holdings[ticker] ||= { lots: [] };
     const lot = { lotId: id(), date: date || today(), qty: q, unitCost: p + (f/q||0), rawPrice: p, fees: f, note: note||"", targetPct: (targetPct!==undefined && targetPct!=="" ? Number(targetPct) : null), targetPrice: (targetPrice!==undefined && targetPrice!=="" ? Number(targetPrice) : null), buyTargetPct: (buyTargetPct!==undefined && buyTargetPct!=="" ? Number(buyTargetPct) : null), buyTargetPrice: (buyTargetPrice!==undefined && buyTargetPrice!=="" ? Number(buyTargetPrice) : null) };
     pf.holdings[ticker].lots.push(lot);
@@ -3053,7 +3135,7 @@ async function buy(pfId, {ticker, date, qty, price, fees, note, targetPct, targe
     book.lots = book.lots.filter(l=>l.qty>0.0000001);
     __gt_updateActiveTargetLotForTicker(book);
     // Add cash
-    pf.cash += (proceeds - f);
+    pf.cash = Math.round(((Number(pf.cash) || 0) + (proceeds - f)) * 100) / 100;
     // Record TX
     pf.transactions.unshift({
       id:id(), type:"sell", date: date || today(), ticker,
@@ -5837,6 +5919,11 @@ $("#sellBtn").addEventListener('click', ()=>{
 
     if(btn.classList.contains('tx-edit')){
       const t = pf.transactions[txIndex];
+      // Nowa blokada — brak edycji transferów, żeby nie rozjechać drugiej strony
+      if(t.type==="transfer_in" || t.type==="transfer_out" || t.type==="transfer_company_in" || t.type==="transfer_company_out"){
+        alert("Edycja transferów jest zablokowana, aby uniknąć rozspójnienia danych.\nUsuń i utwórz transfer ponownie.");
+        return;
+      }
       // Build form per type
       let formHTML = "";
       if(t.type==="deposit" || t.type==="withdraw" || t.type==="transfer_in" || t.type==="transfer_out"){
@@ -9477,7 +9564,16 @@ function showError(e) {
       };
     }
 
-    logoutBtn.onclick = async () => { await signOut(auth); };
+    logoutBtn.onclick = async () => {
+      await signOut(auth);
+      try {
+        const prefix = "GT_MultiUser_v1__";
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(prefix)) localStorage.removeItem(key);
+        }
+      } catch (e) {}
+    };
     if (resendVerifyBtn) {
       resendVerifyBtn.onclick = async () => {
         const user = auth.currentUser;
@@ -9538,7 +9634,40 @@ function showError(e) {
       }
     };
 
-    const debounce = (uid) => {
+    
+    // Nowa, bezpieczna funkcja porównująca, która wersja jest naprawdę nowsza
+    function getNewerSnapshot(local, remote) {
+      // Jeśli jedna z wersji jest pusta – zwróć drugą
+      if (!local || Object.keys(local).length === 0) return remote;
+      if (!remote || Object.keys(remote).length === 0) return local;
+
+      // Znajdź najnowszy timestamp w danych lokalnych (z portfele_firmy_v1)
+      let localTs = 0;
+      try {
+        const raw = local["portfele_firmy_v1"];
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          localTs = Number(parsed._ts) || 0;
+        }
+      } catch (e) {}
+
+      // Znajdź najnowszy timestamp w danych zdalnych
+      let remoteTs = 0;
+      try {
+        const raw = remote["portfele_firmy_v1"];
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          remoteTs = Number(parsed._ts) || 0;
+        }
+      } catch (e) {}
+
+      // Zwróć nowszą wersję według prawdziwego timestampu aplikacji
+      if (remoteTs > localTs) return remote;
+      return local;
+    }
+
+
+const debounce = (uid) => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
         try {
@@ -9562,33 +9691,35 @@ function showError(e) {
 
           // 2. POBIERZ stan serwera przed zapisem (Safety Check)
           const serverSnap = await getDoc(ref);
-          let serverTs = 0;
+          let serverData = null;
           
           if (serverSnap.exists()) {
-            const serverData = serverSnap.data();
-            try {
-              const sRaw = serverData.localStorage ? serverData.localStorage["portfele_firmy_v1"] : null;
-              if (sRaw) {
-                const sParsed = JSON.parse(sRaw);
-                serverTs = Number(sParsed._ts) || 0;
-              }
-            } catch (e) {}
+            serverData = serverSnap.data() || {};
           }
 
-          // 3. PORÓWNANIE: Jeśli serwer jest nowszy o więcej niż 1 sekundę -> STOP i POBIERZ
-          if (serverTs > localTs + 1000) {
-            console.warn(`BLOKADA ZAPISU! Serwer ma nowsze dane (Server: ${serverTs} > Local: ${localTs}). Pobieram...`);
-            
-            // Nadpisz stan lokalny danymi z serwera
-            lastSnapshot = serverSnap.data().localStorage || {};
-            lastSentSnapshot = JSON.parse(JSON.stringify(lastSnapshot)); // zaktualizuj 'lastSent' żeby nie pętlić
-            
-            // Wyślij nowe dane do iFrame (aplikacji)
-            mount(); 
-            
-            // Opcjonalnie: Pokaż powiadomienie użytkownikowi
-            // alert("Pobrano nowszą wersję danych z innego urządzenia.");
-            return; 
+          // 3. NOWE PORÓWNANIE: wybierz naprawdę nowszą wersję na podstawie _ts z portfele_firmy_v1
+          if (serverData && serverData.localStorage) {
+            const remoteStorage = serverData.localStorage;
+            const localRaw = lastSnapshot || {};
+            const newer = getNewerSnapshot(localRaw, remoteStorage);
+
+            if (newer === remoteStorage) {
+              // Serwer ma nowszą wersję według _ts z danych
+              const accept = window.confirm("Wykryto nowszą wersję danych z innego urządzenia.\nPobrać ją?");
+              if (accept) {
+                lastSnapshot = remoteStorage;
+                try {
+                  lastSentSnapshot = JSON.parse(JSON.stringify(lastSnapshot || {}));
+                } catch (_e) {
+                  lastSentSnapshot = lastSnapshot || {};
+                }
+                // Przeładuj iframe z nowymi danymi
+                mount();
+                // Nie zapisujemy – mamy już najnowsze dane
+                return;
+              }
+              // Jeśli użytkownik odrzuci zdalne dane, to kontynuujemy zapis lokalnych danych na serwer
+            }
           }
 
           // 4. Jeśli lokalne są nowsze (lub te same), zapisz bezpiecznie
@@ -9612,8 +9743,6 @@ function showError(e) {
         }
       }, 1500); // Zwiększamy lekko opóźnienie do 1.5s dla bezpieczeństwa
     };
-
-
     // Global helper for password change (used from iframe Settings)
     window.__requestPasswordChange = async (newPassword) => {
       const user = auth.currentUser;
@@ -9711,7 +9840,7 @@ function showError(e) {
       const msg = ev.data || {};
       if (msg.type === 'request_init') {
         appFrame.contentWindow.postMessage({ type: 'storage_apply', payload: lastSnapshot }, '*');
-        appFrame.contentWindow.postMessage({ type: 'set_clear_on_exit', value: true }, '*');
+        appFrame.contentWindow.postMessage({ type: 'set_clear_on_exit', value: false }, '*');
         // Trigger programmatic auto-sync inside the iframe
         setTimeout(()=>{ try{ appFrame.contentWindow.postMessage({ type:'auto_sync' }, '*'); }catch(_e){} }, 150);
         setTimeout(()=>{ try{ appFrame.contentWindow.postMessage({ type:'auto_sync' }, '*'); }catch(_e){} }, 600);
@@ -9812,5 +9941,24 @@ function showError(e) {
       mount();
     });
   </script>
+
+<script>
+  let hasUnsaved = false;
+  window.addEventListener('message', e => {
+    try {
+      if (e.source === appFrame?.contentWindow &&
+          (e.data?.type === 'storage_event' || e.data?.type === 'storage_clear')) {
+        hasUnsaved = true;
+      }
+    } catch (_) {}
+  });
+  window.addEventListener('beforeunload', e => {
+    if (hasUnsaved) {
+      e.preventDefault();
+      e.returnValue = 'Masz niezapisane zmiany. Na pewno chcesz wyjść?';
+    }
+  });
+</script>
+
 </body>
 </html>
