@@ -7,6 +7,41 @@
   <title>GT Multi-User (Firestore Login) — v4.5 auto-sync</title>
   <style>
     :root { --bg:#0b0f16; --card:#111827; --muted:#6b7280; --text:#e5e7eb; --accent:#22c55e; --danger:#ef4444; --border:#1f2937; }
+/* ==== RESPONSIVE FIX – idealne skalowanie na telefonach i małych laptopach ==== */
+@media (max-width: 880px) {
+  .card { 
+    max-width: 96vw; 
+    margin: 8px; 
+    padding: 16px; 
+    border-radius: 14px; 
+  }
+  .card h1 { font-size: 20px; }
+  .card p.small { font-size: 13px; }
+  input, button, select { 
+    font-size: 15px !important; 
+    padding: 11px 12px; 
+  }
+  .row { gap: 8px; }
+  button { padding: 11px 10px; font-size: 14.5px; }
+  .modal { 
+    margin: 10px; 
+    padding: 16px; 
+    border-radius: 14px; 
+    max-height: 94vh; 
+  }
+  .logo-wrap svg { width: 64px; height: 64px; }
+  .logo-text { font-size: 17px; }
+}
+
+@media (max-width: 480px) {
+  .card { padding: 14px; border-radius: 12px; }
+  .card h1 { font-size: 19px; }
+  input, button { font-size: 16px !important; } /* iOS nie zoomuje inputów < 16px */
+  .topbar { bottom: 8px; left: 8px; }
+  .pill { padding: 5px 9px; font-size: 11.5px; }
+}
+
+
     html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, Arial; }
     .center { position:relative; display:flex; align-items:center; justify-content:center; min-height:100%; overflow:hidden; }
     .card { width:100%; max-width:420px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
@@ -9428,7 +9463,7 @@ document.addEventListener('click', (e)=>{
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-    import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, setPersistence, browserLocalPersistence, sendEmailVerification, deleteUser, updatePassword} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+    import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, setPersistence, browserSessionPersistence, sendEmailVerification, deleteUser, updatePassword} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
     import {getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, getDocs, deleteDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -9442,7 +9477,11 @@ document.addEventListener('click', (e)=>{
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    await setPersistence(auth, browserLocalPersistence);
+
+    // WYMUSZENIE SESJI TYLKO NA CZAS OTWARCIA KARTY
+    // await jest tu ważny, aby Firebase nie zdążył załadować starej sesji Local
+    await setPersistence(auth, browserSessionPersistence);
+
     const db = getFirestore(app);
 
     const loginView = document.getElementById('loginView');
@@ -9959,6 +9998,8 @@ const debounce = (uid) => {
     }
   });
 </script>
+
+
 
 </body>
 </html>
