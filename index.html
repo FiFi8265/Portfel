@@ -9519,6 +9519,13 @@ document.addEventListener('click', (e)=>{
       }
     }
 
+
+    // Wymuszenie świeżego logowania po każdym odświeżeniu strony.
+    // Czyścimy lokalny storage GT i ustawiamy flagę, żeby pierwsze wykryte konto
+    // zostało natychmiast wylogowane (zanim coś zsynchronizuje się z Firestore).
+    clearGtLocalStorage();
+    let forceLogoutOnFirstAuth = true;
+
     
     // ENTER = Zaloguj
     function handleEnter(e){ if(e.key === 'Enter'){ e.preventDefault(); loginBtn.click(); } }
@@ -9935,6 +9942,18 @@ const debounce = (uid) => {
     });
 
     onAuthStateChanged(auth, async (user) => {
+      // Wymuszone wylogowanie przy pierwszym odświeżeniu strony:
+      // jeśli jest zapamiętany użytkownik, natychmiast go wyloguj,
+      // zanim uruchomi się jakakolwiek logika synchronizacji.
+      if (typeof forceLogoutOnFirstAuth !== 'undefined' && forceLogoutOnFirstAuth) {
+        forceLogoutOnFirstAuth = false;
+        if (user) {
+          clearGtLocalStorage();
+          try { await signOut(auth); } catch (_e) {}
+          return;
+        }
+      }
+
       if (!user) {
         // --- DODANE CZYSZCZENIE STANU RAM PRZY WYLOGOWANIU ---
         if (timer) clearTimeout(timer); // Stop zapisu starego konta
