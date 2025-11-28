@@ -9504,6 +9504,22 @@ document.addEventListener('click', (e)=>{
     const termsOverlay = document.getElementById('termsOverlay');
     const closeTermsBtn = document.getElementById('closeTermsBtn');
     
+    // Wspólna funkcja: czyści lokalny stan aplikacji GT z przeglądarki
+    function clearGtLocalStorage() {
+      try {
+        const prefix = "GT_MultiUser_v1__";
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(prefix)) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (e) {
+        // ignorujemy błędy dostępu do localStorage
+      }
+    }
+
+    
     // ENTER = Zaloguj
     function handleEnter(e){ if(e.key === 'Enter'){ e.preventDefault(); loginBtn.click(); } }
     emailEl.addEventListener('keydown', handleEnter);
@@ -9604,14 +9620,24 @@ function showError(e) {
     }
 
     logoutBtn.onclick = async () => {
+      // 1. ZATRZYMAJ OCZEKUJĄCY ZAPIS (KRYTYCZNE)
+      if (timer) clearTimeout(timer);
+      timer = null;
+
+      // 2. WYCZYŚĆ ZMIENNE W PAMIĘCI (KRYTYCZNE)
+      // Dzięki temu dane starego usera nie zostaną użyte dla nowego
+      lastSnapshot = {};
+      lastSentSnapshot = {};
+      remoteStateUnknown = false;
+
+      // 3. Wyczyść i zresetuj iframe
+      appFrame.removeAttribute('srcdoc');
+      
+      // 4. Wyczyść lokalny storage aplikacji (prefiks GT_MultiUser_v1__)
+      clearGtLocalStorage();
+
+      // 5. Standardowe wylogowanie z Firebase
       await signOut(auth);
-      try {
-        const prefix = "GT_MultiUser_v1__";
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(prefix)) localStorage.removeItem(key);
-        }
-      } catch (e) {}
     };
     if (resendVerifyBtn) {
       resendVerifyBtn.onclick = async () => {
@@ -9910,6 +9936,16 @@ const debounce = (uid) => {
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
+        // --- DODANE CZYSZCZENIE STANU RAM PRZY WYLOGOWANIU ---
+        if (timer) clearTimeout(timer); // Stop zapisu starego konta
+        timer = null;
+        lastSnapshot = {};              // Wymaż dane z pamięci RAM
+        lastSentSnapshot = {};
+        remoteStateUnknown = false;
+        // Dodatkowo wyczyść lokalny storage aplikacji (na wszelki wypadek)
+        clearGtLocalStorage();
+        // --- KONIEC DODANEGO BLOKU ---
+
         loginView.classList.remove('hide');
         appContainer.classList.add('hide');
         if (verifyView) verifyView.classList.add('hide');
@@ -9919,6 +9955,9 @@ const debounce = (uid) => {
         return;
       }
 
+      // Wejście w tryb zalogowany: zawsze czyścimy lokalny storage,
+      // żeby uniknąć mieszania kont po zamknięciu karty.
+      clearGtLocalStorage();
       // Odśwież dane użytkownika, żeby mieć aktualny status emailVerified
       try { if (typeof user.reload == 'function') await user.reload(); } catch(_){}
 
