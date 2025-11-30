@@ -7,55 +7,344 @@
   <title>GT Multi-User (Firestore Login) — v4.5 auto-sync</title>
   <style>
     :root { --bg:#0b0f16; --card:#111827; --muted:#6b7280; --text:#e5e7eb; --accent:#22c55e; --danger:#ef4444; --border:#1f2937; }
-/* ==== RESPONSIVE FIX – idealne skalowanie na telefonach i małych laptopach ==== */
-@media (max-width: 880px) {
-  .card { 
-    max-width: 96vw; 
-    margin: 8px; 
-    padding: 16px; 
-    border-radius: 14px; 
-  }
-  .card h1 { font-size: 20px; }
-  .card p.small { font-size: 13px; }
-  input, button, select { 
-    font-size: 15px !important; 
-    padding: 11px 12px; 
-  }
-  .row { gap: 8px; }
-  button { padding: 11px 10px; font-size: 14.5px; }
-  .modal { 
-    margin: 10px; 
-    padding: 16px; 
-    border-radius: 14px; 
-    max-height: 94vh; 
-  }
-  .logo-wrap svg { width: 64px; height: 64px; }
-  .logo-text { font-size: 17px; }
+/* === LANDING PAGE & LOGIN STYLES === */
+/* Główny kontener widoku logowania (zamiast starego .center) */
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, Arial;
+}
+.landing-view {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-@media (max-width: 480px) {
-  .card { padding: 14px; border-radius: 12px; }
-  .card h1 { font-size: 19px; }
-  input, button { font-size: 16px !important; } /* iOS nie zoomuje inputów < 16px */
-  .topbar { bottom: 8px; left: 8px; }
-  .pill { padding: 5px 9px; font-size: 11.5px; }
+/* Siatka layoutu: Lewa strona (Info) | Prawa strona (Logowanie) */
+.landing-grid {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 60px;
+  max-width: 1200px;
+  width: 100%;
+  position: relative;
+  z-index: 2;
 }
 
+/* LEWA KOLUMNA - Marketing */
+.landing-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: var(--text);
+  padding-right: 20px;
+}
 
-    html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, Arial; }
-    .center { position:relative; display:flex; align-items:center; justify-content:center; min-height:100%; overflow:hidden; }
-    .card { width:100%; max-width:420px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
-    .card h1 { font-size:22px; margin:0 0 8px; }
-    .card p.small { color:var(--muted); margin:0 0 16px; }
-    label { display:block; font-size:13px; color:var(--muted); margin:12px 0 6px; }
-    input { width:100%; box-sizing:border-box; background:#0f172a; color:#e5e7eb; border:1px solid var(--border); border-radius:10px; padding:10px 12px; outline:none; }
-    input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(34,197,94,.25); }
-    .row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
-    button { flex:1; cursor:pointer; border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:#0f172a; color:#e5e7eb; }
-    button.primary { background:var(--accent); color:#001b0c; border-color:#16a34a; }
-    button.link { background:transparent; border-color:transparent; text-decoration:underline; color:var(--muted); flex:none; }
-    .error { color:var(--danger); font-size:13px; min-height:18px; margin-top:10px; }
-    .hide { display:none !important; }
+.landing-hero-title {
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 16px;
+  background: linear-gradient(to right, #ffffff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.landing-hero-subtitle {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-bottom: 32px;
+  max-width: 500px;
+}
+
+/* Siatka funkcji (ikony) */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.feature-item {
+  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  padding: 16px;
+  border-radius: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  backdrop-filter: blur(4px);
+  transition: transform 0.2s;
+}
+
+.feature-item:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+
+.feature-icon {
+  font-size: 20px;
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--accent);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.feature-text h4 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  color: #fff;
+}
+
+.feature-text p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* PRAWA KOLUMNA - Karta Logowania */
+.login-card-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.card {
+  width: 100%;
+  background: rgba(17, 24, 39, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  backdrop-filter: blur(12px);
+}
+
+.card h1 {
+  font-size: 22px;
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.card p.small {
+  color: var(--muted);
+  margin: 0 0 24px;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* Formularz */
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0b0f16;
+  color: #e5e7eb;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  outline: none;
+  transition: 0.2s;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(34,197,94,.15);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+button {
+  flex: 1;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font-weight: 600;
+  background: #1f2937;
+  color: #e5e7eb;
+  transition: 0.2s;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}
+
+button.primary {
+  background: var(--accent);
+  color: #020617;
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(34,197,94,0.3);
+}
+
+button.primary:hover {
+  box-shadow: 0 6px 16px rgba(34,197,94,0.4);
+}
+
+button.link {
+  background: transparent;
+  border: none;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 16px;
+  width: 100%;
+  text-align: center;
+}
+
+button.link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 13px;
+  min-height: 18px;
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* Checkbox */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.checkbox-row a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.checkbox-row a:hover {
+  text-decoration: underline;
+}
+
+/* Logo w karcie */
+.login-logo {
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.login-logo svg {
+  height: 50px;
+  width: auto;
+}
+
+/* RESPANSYWNOŚĆ */
+@media (max-width: 900px) {
+  .landing-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    max-width: 500px;
+  }
+
+  .landing-info {
+    padding-right: 0;
+    text-align: center;
+  }
+
+  .landing-hero-subtitle {
+    margin: 0 auto 30px;
+  }
+
+  .features-grid {
+    text-align: left;
+  }
+
+  .login-card-container {
+    order: -1;
+  } /* Logowanie nad tekstem na mobile */
+}
+
+@media (max-width: 600px) {
+  .landing-hero-title {
+    font-size: 32px;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 20px;
+  }
+}
+
+    .logo-wrap svg {
+      max-width:240px;
+      width:100%;
+      height:auto;
+      display:block;
+    }
+
+    .bg-svg {
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      z-index:0;
+      pointer-events:none;
+    }
+    #loginView .card {
+      position:relative;
+      z-index:1;
+    }
+
+
+    .app-logo-header {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      vertical-align:middle;
+    }
+    .app-logo-header svg {
+      display:block;
+      max-width:200px;
+      height:auto;
+    }
+
+
+
+    /* === Restored utility / app container / modal styles === */
+.hide { display:none !important; }
     #appContainer { position:fixed; inset:0; }
     #appFrame { width:100%; height:100%; border:0; background:#000; }
     .topbar { position:fixed; bottom:12px; left:12px; z-index:50; display:flex; gap:8px; align-items:center; pointer-events:none; }
@@ -169,708 +458,140 @@
     }
 
 
-    /* Logo sizing override */
-    .logo-wrap svg {
-      max-width:240px;
-      width:100%;
-      height:auto;
-      display:block;
-    }
-
-    .bg-svg {
-      position:absolute;
-      inset:0;
-      width:100%;
-      height:100%;
-      z-index:0;
-      pointer-events:none;
-    }
-    #loginView .card {
-      position:relative;
-      z-index:1;
-    }
-
-
-    .app-logo-header {
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      vertical-align:middle;
-    }
-    .app-logo-header svg {
-      display:block;
-      max-width:200px;
-      height:auto;
-    }
-
+    
 </style>
 </head>
 
 <body>
   
 
-  <div id="loginView" class="center">
+    <div id="loginView" class="landing-view">
     <svg class="bg-svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-    <defs>
-      <linearGradient id="bg-grad-main" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#020617"/>
-        <stop offset="45%" stop-color="#020617"/>
-        <stop offset="100%" stop-color="#020617"/>
-      </linearGradient>
-
-      <linearGradient id="line-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stop-color="#22C55E"/>
-        <stop offset="45%" stop-color="#22C55E"/>
-        <stop offset="75%" stop-color="#0EA5E9"/>
-        <stop offset="100%" stop-color="#6366F1"/>
-      </linearGradient>
-
-      <filter id="line-glow" x="-40%" y="-40%" width="180%" height="180%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
-        <feColorMatrix
-          in="blur"
-          type="matrix"
-          values="0 0 0 0 0.15
-                  0 0 0 0 0.85
-                  0 0 0 0 0.55
-                  0 0 0 0.7 0"
-          result="coloredBlur" />
-        <feMerge>
-          <feMergeNode in="coloredBlur"/>
-          <feMergeNode in="SourceGraphic"/>
-        </feMerge>
-      </filter>
-
-      <style>
-        .bg-root {
-          fill: url(#bg-grad-main);
-        }
-
-        .bg-grid line {
-          stroke: #111827;
-          stroke-width: 1;
-        }
-
-        .bg-candle line {
-          stroke-width: 2;
-          stroke-linecap: round;
-        }
-        .bg-candle rect {
-          stroke-width: 0;
-          rx: 2;
-        }
-        .bg-candle-green rect { fill:#16a34a; }
-        .bg-candle-green line { stroke:#16a34a; }
-        .bg-candle-red rect   { fill:#dc2626; }
-        .bg-candle-red line   { stroke:#dc2626; }
-
-        .price-fill {
-          fill: url(#line-grad);
-          opacity: 0;
-          animation: fill-fade 2.0s ease-out 1.0s forwards;
-        }
-
-        .price-line {
-          fill: none;
-          stroke: url(#line-grad);
-          stroke-width: 2.8;
-          stroke-linecap: round;
-          stroke-linejoin: round;
-          stroke-dasharray: 1500;
-          stroke-dashoffset: 1500;
-          animation: line-draw 3.0s ease-out 0.2s forwards;
-        }
-
-        .price-glow {
-          fill: none;
-          stroke: #22C55E;
-          stroke-width: 6;
-          opacity: 0;
-          filter: url(#line-glow);
-          stroke-dasharray: 1500;
-          stroke-dashoffset: 1500;
-          animation: line-glow-draw 3.0s ease-out 0.2s forwards;
-        }
-
-        .candles {
-          opacity: 0;
-          animation: candles-fade 2.0s ease-out 2.2s forwards;
-        }
-
-        .scene {
-          animation: scene-drift 32s linear infinite alternate;
-          animation-delay: 4.0s;
-        }
-
-        @keyframes line-draw {
-          to { stroke-dashoffset: 0; }
-        }
-
-        @keyframes line-glow-draw {
-          to { stroke-dashoffset: 0; opacity: 0.7; }
-        }
-
-        @keyframes fill-fade {
-          to { opacity: 0.10; }
-        }
-
-        @keyframes candles-fade {
-          to { opacity: 0.68; }
-        }
-
-        @keyframes scene-drift {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-100px); }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .scene {
-            animation: none !important;
-          }
-          .price-line,
-          .price-glow {
-            animation: none !important;
-            stroke-dasharray: none;
-            stroke-dashoffset: 0;
+      <defs>
+        <linearGradient id="bg-grad-main" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#020617"/>
+          <stop offset="45%" stop-color="#020617"/>
+          <stop offset="100%" stop-color="#020617"/>
+        </linearGradient>
+        <linearGradient id="line-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#22C55E"/>
+          <stop offset="45%" stop-color="#22C55E"/>
+          <stop offset="75%" stop-color="#0EA5E9"/>
+          <stop offset="100%" stop-color="#6366F1"/>
+        </linearGradient>
+        <filter id="line-glow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <style>
+          .bg-root { fill: url(#bg-grad-main); }
+          .price-line {
+            fill: none;
+            stroke: url(#line-grad);
+            stroke-width: 3;
+            stroke-linecap: round;
+            animation: line-draw 3s ease-out forwards;
+            stroke-dasharray: 1500;
+            stroke-dashoffset: 1500;
           }
           .price-fill {
-            animation: none !important;
-            opacity: 0.10;
+            fill: url(#line-grad);
+            opacity: 0;
+            animation: fill-fade 2s ease-out 1s forwards;
           }
-          .candles {
-            animation: none !important;
-            opacity: 0.68;
-          }
-        }
-      </style>
-    </defs>
-
-    <rect class="bg-root" width="1440" height="900"/>
-
-    <g class="scene" transform="translate(-40,0)">
-      <!-- grid -->
-      <g class="bg-grid" opacity="0.22">
-        <line x1="120" x2="120" y1="140" y2="780"/>
-        <line x1="220" x2="220" y1="140" y2="780"/>
-        <line x1="320" x2="320" y1="140" y2="780"/>
-        <line x1="420" x2="420" y1="140" y2="780"/>
-        <line x1="520" x2="520" y1="140" y2="780"/>
-        <line x1="620" x2="620" y1="140" y2="780"/>
-        <line x1="720" x2="720" y1="140" y2="780"/>
-        <line x1="820" x2="820" y1="140" y2="780"/>
-        <line x1="920" x2="920" y1="140" y2="780"/>
-        <line x1="1020" x2="1020" y1="140" y2="780"/>
-        <line x1="1120" x2="1120" y1="140" y2="780"/>
-        <line x1="1220" x2="1220" y1="140" y2="780"/>
-        <line x1="1320" x2="1320" y1="140" y2="780"/>
-
-        <line x1="80" x2="1400" y1="200" y2="200"/>
-        <line x1="80" x2="1400" y1="300" y2="300"/>
-        <line x1="80" x2="1400" y1="400" y2="400"/>
-        <line x1="80" x2="1400" y1="500" y2="500"/>
-        <line x1="80" x2="1400" y1="600" y2="600"/>
-        <line x1="80" x2="1400" y1="700" y2="700"/>
+          @keyframes line-draw { to { stroke-dashoffset: 0; } }
+          @keyframes fill-fade { to { opacity: 0.08; } }
+        </style>
+      </defs>
+      <rect class="bg-root" width="1440" height="900"/>
+      <g transform="translate(-40,0)" style="opacity:0.6">
+        <path class="price-fill" d="M 120 760 L 120 620 L 140 608 L 160 573 L 180 579 L 200 567 L 220 534 L 240 492 L 260 494 L 280 516 L 300 541 L 320 537 L 340 534 L 360 494 L 380 468 L 400 439 L 420 436 L 440 461 L 460 457 L 480 442 L 500 416 L 520 370 L 540 379 L 560 344 L 580 374 L 600 376 L 620 340 L 640 340 L 660 340 L 680 351 L 700 340 L 720 340 L 740 340 L 760 340 L 780 340 L 800 340 L 820 340 L 840 349 L 860 376 L 880 391 L 900 378 L 920 392 L 940 350 L 960 343 L 980 340 L 1000 360 L 1020 375 L 1040 355 L 1060 386 L 1080 407 L 1100 433 L 1120 427 L 1140 382 L 1160 386 L 1180 405 L 1200 414 L 1220 436 L 1240 466 L 1260 482 L 1280 502 L 1300 509 L 1300 760 L 120 760 Z"/>
+        <path class="price-line" d="M 120 620 L 140 608 L 160 573 L 180 579 L 200 567 L 220 534 L 240 492 L 260 494 L 280 516 L 300 541 L 320 537 L 340 534 L 360 494 L 380 468 L 400 439 L 420 436 L 440 461 L 460 457 L 480 442 L 500 416 L 520 370 L 540 379 L 560 344 L 580 374 L 600 376 L 620 340 L 640 340 L 660 340 L 680 351 L 700 340 L 720 340 L 740 340 L 760 340 L 780 340 L 800 340 L 820 340 L 840 349 L 860 376 L 880 391 L 900 378 L 920 392 L 940 350 L 960 343 L 980 340 L 1000 360 L 1020 375 L 1040 355 L 1060 386 L 1080 407 L 1100 433 L 1120 427 L 1140 382 L 1160 386 L 1180 405 L 1200 414 L 1220 436 L 1240 466 L 1260 482 L 1280 502 L 1300 509"/>
       </g>
-
-      <!-- candles -->
-      <g class="candles" opacity="0.68">
-      <g class="bg-candle bg-candle-green">
-        <line x1="120" y1="606.0" x2="120" y2="638.0"/>
-        <rect x="116" y="620.0" width="8" height="12.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="140" y1="579.0" x2="140" y2="627.0"/>
-        <rect x="136" y="596.0" width="8" height="12.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="160" y1="528.0" x2="160" y2="586.0"/>
-        <rect x="156" y="548.0" width="8" height="25.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="180" y1="568.0" x2="180" y2="601.0"/>
-        <rect x="176" y="579.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="200" y1="547.0" x2="200" y2="589.0"/>
-        <rect x="196" y="567.0" width="8" height="15.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="220" y1="522.0" x2="220" y2="572.0"/>
-        <rect x="216" y="534.0" width="8" height="23.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="240" y1="486.0" x2="240" y2="509.0"/>
-        <rect x="236" y="492.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="260" y1="451.0" x2="260" y2="510.0"/>
-        <rect x="256" y="470.0" width="8" height="24.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="280" y1="510.0" x2="280" y2="547.0"/>
-        <rect x="276" y="516.0" width="8" height="11.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="300" y1="532.0" x2="300" y2="563.0"/>
-        <rect x="296" y="541.0" width="8" height="10.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="320" y1="523.0" x2="320" y2="587.0"/>
-        <rect x="316" y="537.0" width="8" height="33.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="340" y1="490.0" x2="340" y2="544.0"/>
-        <rect x="336" y="506.0" width="8" height="28.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="360" y1="476.0" x2="360" y2="538.0"/>
-        <rect x="356" y="494.0" width="8" height="28.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="380" y1="448.0" x2="380" y2="481.0"/>
-        <rect x="376" y="462.0" width="8" height="6.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="400" y1="418.0" x2="400" y2="453.0"/>
-        <rect x="396" y="426.0" width="8" height="13.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="420" y1="424.0" x2="420" y2="475.0"/>
-        <rect x="416" y="436.0" width="8" height="21.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="440" y1="455.0" x2="440" y2="491.0"/>
-        <rect x="436" y="461.0" width="8" height="24.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="460" y1="426.0" x2="460" y2="466.0"/>
-        <rect x="456" y="439.0" width="8" height="18.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="480" y1="399.0" x2="480" y2="460.0"/>
-        <rect x="476" y="409.0" width="8" height="33.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="500" y1="400.0" x2="500" y2="436.0"/>
-        <rect x="496" y="416.0" width="8" height="10.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="520" y1="354.0" x2="520" y2="402.0"/>
-        <rect x="516" y="370.0" width="8" height="20.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="540" y1="337.0" x2="540" y2="394.0"/>
-        <rect x="536" y="344.0" width="8" height="35.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="560" y1="303.0" x2="560" y2="355.0"/>
-        <rect x="556" y="317.0" width="8" height="27.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="580" y1="343.0" x2="580" y2="386.0"/>
-        <rect x="576" y="350.0" width="8" height="24.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="600" y1="324.0" x2="600" y2="390.0"/>
-        <rect x="596" y="342.0" width="8" height="34.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="620" y1="333.0" x2="620" y2="367.0"/>
-        <rect x="616" y="340.0" width="8" height="13.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="640" y1="334.0" x2="640" y2="367.0"/>
-        <rect x="636" y="340.0" width="8" height="16.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="660" y1="326.0" x2="660" y2="358.0"/>
-        <rect x="656" y="332.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="680" y1="339.0" x2="680" y2="369.0"/>
-        <rect x="676" y="351.0" width="8" height="7.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="700" y1="292.0" x2="700" y2="356.0"/>
-        <rect x="696" y="308.0" width="8" height="32.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="720" y1="305.0" x2="720" y2="352.0"/>
-        <rect x="716" y="325.0" width="8" height="15.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="740" y1="296.0" x2="740" y2="359.0"/>
-        <rect x="736" y="313.0" width="8" height="27.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="760" y1="312.0" x2="760" y2="356.0"/>
-        <rect x="756" y="323.0" width="8" height="17.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="780" y1="313.0" x2="780" y2="360.0"/>
-        <rect x="776" y="332.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="800" y1="294.0" x2="800" y2="354.0"/>
-        <rect x="796" y="312.0" width="8" height="28.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="820" y1="326.0" x2="820" y2="364.0"/>
-        <rect x="816" y="340.0" width="8" height="14.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="840" y1="312.0" x2="840" y2="365.0"/>
-        <rect x="836" y="332.0" width="8" height="17.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="860" y1="356.0" x2="860" y2="387.0"/>
-        <rect x="856" y="368.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="880" y1="358.0" x2="880" y2="402.0"/>
-        <rect x="876" y="372.0" width="8" height="19.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="900" y1="371.0" x2="900" y2="425.0"/>
-        <rect x="896" y="378.0" width="8" height="31.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="920" y1="360.0" x2="920" y2="407.0"/>
-        <rect x="916" y="378.0" width="8" height="14.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="940" y1="338.0" x2="940" y2="370.0"/>
-        <rect x="936" y="350.0" width="8" height="14.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="960" y1="312.0" x2="960" y2="359.0"/>
-        <rect x="956" y="325.0" width="8" height="18.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="980" y1="296.0" x2="980" y2="353.0"/>
-        <rect x="976" y="307.0" width="8" height="33.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1000" y1="350.0" x2="1000" y2="394.0"/>
-        <rect x="996" y="360.0" width="8" height="22.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1020" y1="335.0" x2="1020" y2="389.0"/>
-        <rect x="1016" y="343.0" width="8" height="32.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1040" y1="336.0" x2="1040" y2="375.0"/>
-        <rect x="1036" y="355.0" width="8" height="6.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1060" y1="372.0" x2="1060" y2="424.0"/>
-        <rect x="1056" y="386.0" width="8" height="30.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1080" y1="393.0" x2="1080" y2="422.0"/>
-        <rect x="1076" y="407.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1100" y1="416.0" x2="1100" y2="478.0"/>
-        <rect x="1096" y="433.0" width="8" height="34.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1120" y1="400.0" x2="1120" y2="442.0"/>
-        <rect x="1116" y="420.0" width="8" height="7.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1140" y1="375.0" x2="1140" y2="400.0"/>
-        <rect x="1136" y="382.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1160" y1="377.0" x2="1160" y2="424.0"/>
-        <rect x="1156" y="386.0" width="8" height="29.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1180" y1="395.0" x2="1180" y2="423.0"/>
-        <rect x="1176" y="405.0" width="8" height="6.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1200" y1="370.0" x2="1200" y2="421.0"/>
-        <rect x="1196" y="384.0" width="8" height="30.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1220" y1="412.0" x2="1220" y2="445.0"/>
-        <rect x="1216" y="426.0" width="8" height="10.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1240" y1="424.0" x2="1240" y2="476.0"/>
-        <rect x="1236" y="433.0" width="8" height="33.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1260" y1="469.0" x2="1260" y2="497.0"/>
-        <rect x="1256" y="476.0" width="8" height="6.0"/>
-      </g>
-      <g class="bg-candle bg-candle-green">
-        <line x1="1280" y1="488.0" x2="1280" y2="524.0"/>
-        <rect x="1276" y="502.0" width="8" height="8.0"/>
-      </g>
-      <g class="bg-candle bg-candle-red">
-        <line x1="1300" y1="471.0" x2="1300" y2="529.0"/>
-        <rect x="1296" y="491.0" width="8" height="18.0"/>
-      </g>
-      </g>
-
-      <!-- area under line -->
-      <path class="price-fill" d="M 120 760 L 120 620 L 140 608 L 160 573 L 180 579 L 200 567 L 220 534 L 240 492 L 260 494 L 280 516 L 300 541 L 320 537 L 340 534 L 360 494 L 380 468 L 400 439 L 420 436 L 440 461 L 460 457 L 480 442 L 500 416 L 520 370 L 540 379 L 560 344 L 580 374 L 600 376 L 620 340 L 640 340 L 660 340 L 680 351 L 700 340 L 720 340 L 740 340 L 760 340 L 780 340 L 800 340 L 820 340 L 840 349 L 860 376 L 880 391 L 900 378 L 920 392 L 940 350 L 960 343 L 980 340 L 1000 360 L 1020 375 L 1040 355 L 1060 386 L 1080 407 L 1100 433 L 1120 427 L 1140 382 L 1160 386 L 1180 405 L 1200 414 L 1220 436 L 1240 466 L 1260 482 L 1280 502 L 1300 509 L 1300 760 L 120 760 Z"/>
-
-      <!-- glow path -->
-      <path class="price-glow" d="M 120 620 L 140 608 L 160 573 L 180 579 L 200 567 L 220 534 L 240 492 L 260 494 L 280 516 L 300 541 L 320 537 L 340 534 L 360 494 L 380 468 L 400 439 L 420 436 L 440 461 L 460 457 L 480 442 L 500 416 L 520 370 L 540 379 L 560 344 L 580 374 L 600 376 L 620 340 L 640 340 L 660 340 L 680 351 L 700 340 L 720 340 L 740 340 L 760 340 L 780 340 L 800 340 L 820 340 L 840 349 L 860 376 L 880 391 L 900 378 L 920 392 L 940 350 L 960 343 L 980 340 L 1000 360 L 1020 375 L 1040 355 L 1060 386 L 1080 407 L 1100 433 L 1120 427 L 1140 382 L 1160 386 L 1180 405 L 1200 414 L 1220 436 L 1240 466 L 1260 482 L 1280 502 L 1300 509"/>
-
-      <!-- main price line -->
-      <path class="price-line" d="M 120 620 L 140 608 L 160 573 L 180 579 L 200 567 L 220 534 L 240 492 L 260 494 L 280 516 L 300 541 L 320 537 L 340 534 L 360 494 L 380 468 L 400 439 L 420 436 L 440 461 L 460 457 L 480 442 L 500 416 L 520 370 L 540 379 L 560 344 L 580 374 L 600 376 L 620 340 L 640 340 L 660 340 L 680 351 L 700 340 L 720 340 L 740 340 L 760 340 L 780 340 L 800 340 L 820 340 L 840 349 L 860 376 L 880 391 L 900 378 L 920 392 L 940 350 L 960 343 L 980 340 L 1000 360 L 1020 375 L 1040 355 L 1060 386 L 1080 407 L 1100 433 L 1120 427 L 1140 382 L 1160 386 L 1180 405 L 1200 414 L 1220 436 L 1240 466 L 1260 482 L 1280 502 L 1300 509"/>
-    </g>
-  </svg>
-<div class="card">
-      
-      <div class="logo-wrap">
-  <svg
-    width="260"
-    height="80"
-    viewBox="0 0 260 80"
-    xmlns="http://www.w3.org/2000/svg"
-    role="img"
-    aria-labelledby="mwTitle mwDesc"
-  >
-    <title id="mwTitle">MyWallets</title>
-    <desc id="mwDesc">Logo MyWallets z ikoną wykresu giełdowego i animowanym napisem</desc>
-
-    <defs>
-      <!-- Gradient tła ikony -->
-      <linearGradient id="mw-grad" x1="0%" y1="0%" x2="120%" y2="120%">
-        <stop offset="0%" stop-color="#22C55E">
-          <animate attributeName="offset"
-                   values="0;0.25;0"
-                   dur="8s"
-                   repeatCount="indefinite" />
-        </stop>
-        <stop offset="50%" stop-color="#0EA5E9">
-          <animate attributeName="offset"
-                   values="0.3;0.6;0.3"
-                   dur="8s"
-                   repeatCount="indefinite" />
-        </stop>
-        <stop offset="100%" stop-color="#6366F1">
-          <animate attributeName="offset"
-                   values="0.8;1;0.8"
-                   dur="8s"
-                   repeatCount="indefinite" />
-        </stop>
-      </linearGradient>
-
-      <!-- Cień pod ikoną -->
-      <filter id="mw-shadow" x="-50%" y="-50%" width="200%" height="200%">
-        <feDropShadow dx="0" dy="4" stdDeviation="7" flood-opacity="0.28"/>
-      </filter>
-
-      <style>
-        /* Animacje wejścia i „życia” logotypu */
-        @keyframes mw-icon-pop {
-          0%   { transform: translateY(8px) scale(0.7); opacity: 0; }
-          60%  { transform: translateY(-2px) scale(1.05); opacity: 1; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
-
-        @keyframes mw-text-reveal {
-          0%   { opacity: 0; transform: translateX(10px); }
-          100% { opacity: 1; transform: translateX(0); }
-        }
-
-        @keyframes mw-underline-grow {
-          0%   { transform: scaleX(0); opacity: 0; }
-          40%  { opacity: 1; }
-          100% { transform: scaleX(1); opacity: 1; }
-        }
-
-        @keyframes mw-dot-pulse {
-          0%   { transform: scale(0.8); opacity: 0.5; }
-          50%  { transform: scale(1.3); opacity: 1; }
-          100% { transform: scale(0.8); opacity: 0.5; }
-        }
-
-        @keyframes mw-bars {
-          0%   { transform: scaleY(0.4); }
-          50%  { transform: scaleY(1.05); }
-          100% { transform: scaleY(0.9); }
-        }
-
-        .mw-icon-wrap {
-          transform-origin: 44px 40px;
-          animation: mw-icon-pop 480ms cubic-bezier(0.18,0.89,0.32,1.28) 80ms both;
-        }
-
-        .mw-word-main {
-          animation: mw-text-reveal 380ms ease-out 200ms both;
-        }
-
-        .mw-word-sub {
-          animation: mw-text-reveal 380ms ease-out 320ms both;
-        }
-
-        .mw-underline {
-          transform-origin: left center;
-          animation: mw-underline-grow 420ms ease-out 380ms both;
-        }
-
-        .mw-dot {
-          transform-origin: center;
-          animation: mw-dot-pulse 1.8s ease-in-out 700ms infinite;
-        }
-
-        .mw-bar {
-          transform-origin: center bottom;
-          animation: mw-bars 2.2s ease-in-out infinite;
-        }
-        .mw-bar-1 { animation-delay: 0.0s; }
-        .mw-bar-2 { animation-delay: 0.3s; }
-        .mw-bar-3 { animation-delay: 0.6s; }
-
-        /* Szacunek dla prefers-reduced-motion */
-        @media (prefers-reduced-motion: reduce) {
-          .mw-icon-wrap,
-          .mw-word-main,
-          .mw-word-sub,
-          .mw-underline,
-          .mw-dot,
-          .mw-bar {
-            animation: none !important;
-          }
-        }
-
-        text {
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-                       sans-serif;
-        }
-      </style>
-    </defs>
-
-    <!-- LEWA STRONA: ikona wykresu giełdowego -->
-    <g class="mw-icon-wrap" transform="translate(10, 8)">
-      <!-- Tło / karta -->
-      <rect
-        x="4"
-        y="8"
-        width="80"
-        height="56"
-        rx="18"
-        ry="18"
-        fill="url(#mw-grad)"
-        filter="url(#mw-shadow)"
-      />
-
-      <!-- Delikatna linia „osi X” -->
-      <line
-        x1="18"
-        y1="54"
-        x2="72"
-        y2="54"
-        stroke="rgba(15,23,42,0.85)"
-        stroke-width="2"
-        stroke-linecap="round"
-      />
-
-      <!-- Słupki wykresu (animowane) -->
-      <rect
-        class="mw-bar mw-bar-1"
-        x="22"
-        y="40"
-        width="8"
-        height="14"
-        rx="2"
-        fill="#bbf7d0"
-      />
-      <rect
-        class="mw-bar mw-bar-2"
-        x="36"
-        y="34"
-        width="8"
-        height="20"
-        rx="2"
-        fill="#86efac"
-      />
-      <rect
-        class="mw-bar mw-bar-3"
-        x="50"
-        y="28"
-        width="8"
-        height="26"
-        rx="2"
-        fill="#4ade80"
-      />
-
-      <!-- Linia trendu + strzałka w górę -->
-      <polyline
-        points="20,48 32,42 44,38 58,30"
-        fill="none"
-        stroke="#fefce8"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-      <polygon
-        points="58,30 62,26 62,33"
-        fill="#fefce8"
-      />
-
-      <!-- Mała kropka „sygnał / alert” -->
-      <circle
-        class="mw-dot"
-        cx="64"
-        cy="22"
-        r="4"
-        fill="#22C55E"
-      />
-    </g>
-
-    <!-- PRAWA STRONA: czytelny napis (bez wchodzenia na ikonę) -->
-    <g transform="translate(110, 22)">
-      <!-- Główny napis -->
-      <text class="mw-word-main" x="0" y="22" font-size="22" fill="#E5E7EB">
-        <tspan fill="#22C55E">My</tspan>Wallets
-      </text>
-
-      <!-- Podtytuł -->
-      <text class="mw-word-sub" x="0" y="40" font-size="11" fill="#9CA3AF">
-        investment portfolios &amp; alerts
-      </text>
-
-      <!-- Podkreślenie pod napisem -->
-      <rect
-        class="mw-underline"
-        x="0"
-        y="26"
-        width="132"
-        height="2"
-        rx="1"
-        fill="#22C55E"
-        fill-opacity="0.7"
-      />
-    </g>
-  </svg>
-</div>
-
-      <h1>Zaloguj się</h1>
-      <p class="small">Lub utwórz nowe konto.</p>
-      <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
-      <label for="password">Hasło</label>
-      <input id="password" type="password" autocomplete="current-password" placeholder="min. 6 znaków" />
-            <label class="checkbox-row">
-        <input id="acceptTerms" type="checkbox" />
-        <span>Akceptuję <a href="#" id="termsLink">regulamin i zasady prywatności</a></span>
-      </label>
-<div class="row">
-        <button id="loginBtn" class="primary">Zaloguj</button>
-        <button id="signupBtn">Utwórz konto</button> </div>
-      <button id="resetBtn" class="link" type="button">Zapomniałem hasła</button>
-      <div id="err" class="error"></div>
+    </svg>
+    <div class="landing-grid">
+      <div class="landing-info">
+        <h1 class="landing-hero-title">Twoje inwestycje.<br>Pod pełną kontrolą.</h1>
+        <p class="landing-hero-subtitle">
+          Profesjonalne narzędzie do zarządzania wieloma portfelami. Śledź wyniki, analizuj ryzyko
+          i zarządzaj swoją "osobistą firmą inwestycyjną" w jednym miejscu.
+        </p>
+        <div class="features-grid">
+          <div class="feature-item">
+            <div class="feature-icon">📂</div>
+            <div class="feature-text">
+              <h4>Multi-Portfel</h4>
+              <p>Twórz osobne strategie (np. dywidendy, growth) jako niezależne "firmy".</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">📈</div>
+            <div class="feature-text">
+              <h4>Global Overview</h4>
+              <p>Agregacja całego majątku, śledzenie Cash Flow i wykresy wzrostu.</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">🔔</div>
+            <div class="feature-text">
+              <h4>Alarmy i Cele</h4>
+              <p>Ustawiaj cele kupna i sprzedaży. Otrzymuj powiadomienia, gdy cena jest blisko.</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">🌍</div>
+            <div class="feature-text">
+              <h4>Wielowalutowość</h4>
+              <p>Obsługa USD, EUR, PLN z automatycznym przeliczaniem kursów (FX).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="login-card-container">
+        <div class="card">
+          <div class="login-logo">
+            <svg viewBox="0 0 260 80" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="mw-grad-sm" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#22C55E"/>
+                  <stop offset="100%" stop-color="#0EA5E9"/>
+                </linearGradient>
+              </defs>
+              <g transform="translate(10, 8) scale(0.8)">
+                <rect x="4" y="8" width="80" height="56" rx="18" ry="18" fill="url(#mw-grad-sm)"/>
+                <rect x="22" y="40" width="8" height="14" rx="2" fill="#bbf7d0"/>
+                <rect x="36" y="34" width="8" height="20" rx="2" fill="#86efac"/>
+                <rect x="50" y="28" width="8" height="26" rx="2" fill="#4ade80"/>
+                <polyline points="20,48 32,42 44,38 58,30" fill="none" stroke="#fff" stroke-width="2"/>
+              </g>
+              <g transform="translate(90, 28)">
+                <text x="0" y="22" font-size="24" font-weight="700" fill="#E5E7EB" font-family="sans-serif">
+                  <tspan fill="#22C55E">My</tspan>Wallets
+                </text>
+              </g>
+            </svg>
+          </div>
+          <h1>Witaj ponownie</h1>
+          <p class="small">Zaloguj się do swojego terminala.</p>
+          <label for="email">Adres Email</label>
+          <input id="email" type="email" autocomplete="email" placeholder="jan@przyklad.pl" />
+          <label for="password">Hasło</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+          <label class="checkbox-row">
+            <input id="acceptTerms" type="checkbox" />
+            <span>Akceptuję <a href="#" id="termsLink">regulamin i politykę prywatności</a></span>
+          </label>
+          <div class="row">
+            <button id="loginBtn" class="primary">Zaloguj się</button>
+            <button id="signupBtn">Utwórz konto</button>
+          </div>
+          <button id="resetBtn" class="link" type="button">Nie pamiętam hasła</button>
+          <div id="err" class="error"></div>
+        </div>
+      </div>
     </div>
   </div>
+
 
   <div id="termsOverlay" class="modal-overlay hide">
     <div class="modal">
@@ -1682,8 +1403,17 @@ dialog input[type="checkbox"], dialog input[type="radio"],
   border:1px solid var(--muted, rgba(128,128,128,.4));
   background: var(--bg-2, rgba(255,255,255,.05));
   outline:none;
+  color: var(--text, #e5e7eb);
 }
 #go-period:focus{ box-shadow:0 0 0 2px rgba(100,150,255,.25); }
+#go-period option{
+  color:#0f172a;
+  background:#f9fafb;
+}
+#go-period option:checked{
+  background:#e5e7eb;
+  color:#0f172a;
+}
 
   .banner.warn{
     background: #2b1f1f; color: #ffd7d7; border: 1px solid #6b2a2a;
@@ -7604,62 +7334,502 @@ service cloud.firestore {
 
 
 <!-- === [GT ADDON] Global Overview Tab (Osobna Zakładka) === -->
+
 <style>
-  /* Namespaced styles to avoid collisions */
-  #go-tab-overlay[hidden]{ display:none !important }
-  #go-tab-overlay{
-    position:fixed; inset:0; z-index:9999;
-    background: radial-gradient(1200px 600px at 10% -10%, rgba(34,211,238,.06), transparent 40%),
-                radial-gradient(1200px 600px at 110% 110%, rgba(16,185,129,.06), transparent 40%),
-                linear-gradient(120deg,#0b1222 0%,#0f172a 40%, #101525 100%);
-    color:#e5e7eb; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Noto Sans, Ubuntu, Cantarell, Arial;
-  }
-  #go-tab-header{
-    display:flex; align-items:center; gap:10px; justify-content:space-between;
-    padding:12px 14px; border-bottom:1px solid #1f2937;
-    background: linear-gradient(0deg, rgba(15,23,42,.75), rgba(15,23,42,.75));
-    backdrop-filter: blur(8px);
-  }
-  #go-tab-main{ padding:14px; display:flex; flex-direction:column; gap:14px; height: calc(100% - 60px); overflow:auto }
-  #go-fab{
-    position:fixed; right:16px; bottom:16px; z-index:9998;
-    border:none; border-radius:14px; padding:12px 14px; cursor:pointer; font-weight:800;
-    background:var(--ok); color:#001018; box-shadow:0 12px 25px rgba(16,185,129,.35);
-  }
-  #go-fab:hover{ transform: translateY(-1px); filter: brightness(1.05) }
-  #go-close{ border:none; border-radius:10px; padding:8px 10px; cursor:pointer; font-weight:800; background:#334155; color:#e5e7eb }
-  #go-close:hover{ filter:brightness(1.1) }
-  /* Cards, tables, etc. (scoped) */
-  #go-tab-overlay .go-card{ background:linear-gradient(180deg, rgba(17,24,39,.92), rgba(16,23,42,.98)); border:1px solid #1f2937; border-radius:16px }
-  #go-tab-overlay .go-panel{ padding:14px }
-  #go-tab-overlay .go-grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:14px }
-  #go-tab-overlay .go-col-3{ grid-column: span 3 } .go-col-4{ grid-column: span 4 } .go-col-6{ grid-column: span 6 } .go-col-8{ grid-column: span 8 } .go-col-12{ grid-column: span 12 }
-  @media (max-width: 980px){ #go-tab-overlay .go-col-3, #go-tab-overlay .go-col-4, #go-tab-overlay .go-col-6, #go-tab-overlay .go-col-8{ grid-column: span 12 } }
-  #go-tab-overlay table{ width:100%; border-collapse:collapse }
-  #go-tab-overlay th, #go-tab-overlay td{ padding:10px; border-bottom:1px solid #1f2937; text-align:left; vertical-align: top }
-  #go-tab-overlay th{ color:#cbd5e1; background:#0b1222; position:sticky; top:0 }
-  #go-tab-overlay .go-ticker{ font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; letter-spacing:.3px; font-weight:700 }
-  #go-tab-overlay input, #go-tab-overlay select{
-    width:100%; padding:10px 12px; border-radius:12px; border:1px solid #334155;
-    background:#0b1222; color:#e5e7eb; outline:none; font-size:14px
-  }
-  #go-tab-overlay .go-chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#0b1222; border:1px solid #1f2937; font-weight:700 }
-  #go-tab-overlay .go-tag{ padding:3px 8px; border-radius:999px; border:1px solid #334155; color:#cbd5e1; font-size:12px; background:#0c1426 }
-  #go-tab-overlay .go-stat{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:12px; border-radius:14px; background:#0b1222; border:1px solid #1f2937 }
-  #go-tab-overlay .go-big{ font-size:22px; font-weight:900 }
-  #go-tab-overlay .go-muted{ color:#94a3b8 }
-  #go-tab-overlay .go-badge{ font-weight:800; padding:2px 6px; border-radius:8px; background: rgba(255,255,255,.04); display:inline-block; min-width:62px; text-align:right }
-  #go-tab-overlay .go-pos{ color:#10b981 } .go-neg{ color:#ef4444 }
-  #go-tab-overlay .go-mini{ font-size:12px }
-  #go-tab-overlay .go-switch{ display:flex; align-items:center; gap:8px }
+  /* === NOWY DASHBOARD STATYSTYK GLOBALNYCH === */
+  #go-tab-overlay[hidden] { display: none !important; }
 
-  .banner.warn{
-    background: #2b1f1f; color: #ffd7d7; border: 1px solid #6b2a2a;
-    padding: 8px 12px; border-radius: 10px; margin: 8px 0;
-    display:flex; align-items:center; gap:12px; justify-content:space-between;
+  #go-tab-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
   }
 
+  /* Górny pasek z tytułem i przyciskami */
+  #go-tab-header {
+    background: #020617;
+    border-bottom: 1px solid #1e293b;
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    z-index: 20;
+  }
+  #go-tab-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f9fafb;
+  }
+  .go-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .go-btn-icon {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .go-btn-icon:hover {
+    background: #334155;
+    border-color: #475569;
+    transform: translateY(-1px);
+  }
+  .go-btn-primary {
+    background: #2563eb;
+    border-color: #3b82f6;
+    color: #f9fafb;
+  }
+  .go-btn-primary:hover {
+    background: #1d4ed8;
+    border-color: #3b82f6;
+  }
+  .go-btn-close {
+    background: #b91c1c;
+    border-color: #dc2626;
+    color: #fef2f2;
+  }
+  .go-btn-close:hover {
+    background: #991b1b;
+    border-color: #ef4444;
+  }
+  .go-btn-label {
+    display: none;
+  }
+  @media (min-width: 640px) {
+    .go-btn-label {
+      display: inline;
+    }
+  }
+
+  /* Główna część (przewijana) */
+  #go-tab-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background:
+      radial-gradient(circle at top right, rgba(51,65,85,0.55), transparent 40%),
+      radial-gradient(circle at bottom left, rgba(30,64,175,0.4), transparent 45%),
+      #020617;
+  }
+
+  /* Pasek konfiguracji */
+  .go-config-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 14px 16px;
+    background: rgba(15,23,42,0.95);
+    border-radius: 14px;
+    border: 1px solid #1f2937;
+    box-shadow: 0 12px 30px rgba(15,23,42,0.8);
+  }
+  .go-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .go-input-group label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    font-weight: 600;
+  }
+  .go-input-group input,
+  .go-input-group select {
+    background: #020617;
+    border-radius: 8px;
+    border: 1px solid #1f2937;
+    color: #e5e7eb;
+    padding: 7px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .go-input-group input:focus,
+  .go-input-group select:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(37,99,235,0.7);
+  }
+  .go-inline-checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+  .go-inline-checkbox input[type="checkbox"] {
+    width: auto;
+  }
+
+  .go-info-row {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px solid #1f2937;
+    font-size: 12px;
+    color: #cbd5e1;
+    align-items: center;
+  }
+  .go-fx-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color: #38bdf8;
+  }
+  .go-fx-edit input {
+    width: 80px;
+    margin: 0 4px;
+    background: #020617;
+    border-radius: 6px;
+    border: 1px solid #1f2937;
+    color: #e5e7eb;
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+  .go-fx-edit button {
+    border-radius: 999px;
+    border: 1px solid #1f2937;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-size: 11px;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+  .go-fx-edit button:hover {
+    background: #1e293b;
+  }
+  .go-ttl {
+    margin-left: auto;
+    opacity: 0.7;
+    font-size: 11px;
+  }
+
+  /* Karty KPI */
+  .go-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+  @media (max-width: 1100px) {
+    .go-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 640px) {
+    .go-kpi-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .go-kpi-card {
+    position: relative;
+    background: radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 55%),
+                radial-gradient(circle at bottom right, rgba(16,185,129,0.12), transparent 55%),
+                #020617;
+    border-radius: 16px;
+    border: 1px solid rgba(148,163,184,0.28);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 14px 30px rgba(15,23,42,0.8);
+  }
+  .go-kpi-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border-top: 2px solid transparent;
+    border-image: linear-gradient(90deg, #38bdf8, #22c55e, #a855f7) 1;
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .go-kpi-card.accent-blue::before { border-image: linear-gradient(90deg,#38bdf8,#0ea5e9) 1; }
+  .go-kpi-card.accent-purple::before { border-image: linear-gradient(90deg,#a855f7,#6366f1) 1; }
+  .go-kpi-card.accent-green::before { border-image: linear-gradient(90deg,#22c55e,#16a34a) 1; }
+  .go-kpi-card.accent-orange::before { border-image: linear-gradient(90deg,#f97316,#eab308) 1; }
+
+  .go-kpi-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #cbd5e1;
+  }
+  .go-kpi-label select {
+    background: transparent;
+    border: none;
+    color: #facc15;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .go-kpi-label select:focus {
+    outline: none;
+  }
+  .go-kpi-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #f9fafb;
+    letter-spacing: -0.4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .go-kpi-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: #9ca3af;
+  }
+  .go-sub-right {
+    margin-left: auto;
+    font-size: 11px;
+    color: #cbd5e1;
+  }
+  .go-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(15,23,42,0.8);
+    border: 1px solid rgba(148,163,184,0.4);
+    color: #e5e7eb;
+  }
+  .go-pos {
+    color: #4ade80 !important;
+  }
+  .go-neg {
+    color: #fb7185 !important;
+  }
+  .go-muted {
+    color: #6b7280;
+  }
+  .go-mini {
+    font-size: 11px;
+  }
+
+  .go-summary-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    background: rgba(15,23,42,0.9);
+    border-radius: 10px;
+    border: 1px solid #1f2937;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .go-summary-strip strong {
+    color: #e5e7eb;
+  }
+
+  /* Sekcje nagłówków i tabele */
+  .go-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    margin-bottom: 8px;
+  }
+  .go-positions-title {
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .go-positions-title input {
+    background: #020617;
+    border-radius: 8px;
+    border: 1px solid #1f2937;
+    color: #e5e7eb;
+    padding: 5px 10px;
+    font-size: 12px;
+    max-width: 260px;
+  }
+  .go-positions-title input::placeholder {
+    color: #6b7280;
+  }
+
+  .go-table-card {
+    background: rgba(15,23,42,0.96);
+    border-radius: 14px;
+    border: 1px solid #1f2937;
+    box-shadow: 0 14px 30px rgba(15,23,42,0.8);
+  }
+  .go-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .go-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .go-table-wrap thead {
+    background: #020617;
+  }
+  .go-table-wrap th,
+  .go-table-wrap td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #111827;
+    text-align: left;
+    vertical-align: middle;
+  }
+  .go-table-wrap th {
+    font-size: 12px;
+    font-weight: 600;
+    color: #9ca3af;
+    white-space: nowrap;
+  }
+  .go-table-wrap td {
+    color: #e5e7eb;
+  }
+  .go-table-wrap tr:nth-child(even) td {
+    background: rgba(15,23,42,0.9);
+  }
+  .go-table-wrap tr:hover td {
+    background: rgba(30,64,175,0.25);
+  }
+  .go-ticker {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-weight: 700;
+  }
+
+  /* Wykres */
+  .go-chart-container {
+    background: rgba(15,23,42,0.96);
+    border-radius: 14px;
+    border: 1px solid #1f2937;
+    padding: 14px 16px;
+    box-shadow: 0 14px 30px rgba(15,23,42,0.8);
+  }
+  .go-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .go-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+  .go-legend-entry {
+    font-weight: 500;
+  }
+  .go-legend-invested {
+    color: #38bdf8;
+  }
+  .go-legend-equity {
+    color: #4ade80;
+  }
+  .go-legend-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    min-width: 70px;
+  }
+  .go-chart-wrap {
+    position: relative;
+    height: 320px;
+  }
+  #go-line-chart,
+  #go-line-chart-overlay {
+    position: absolute;
+    inset: 0;
+  }
+  #go-chart-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    font-size: 13px;
+  }
+
+  .chart-tooltip-improved {
+    position: absolute;
+    display: none;
+    pointer-events: none;
+    background: rgba(15,23,42,0.96);
+    border-radius: 10px;
+    border: 1px solid #1f2937;
+    box-shadow: 0 18px 35px rgba(0,0,0,0.7);
+    padding: 10px 12px;
+    font-size: 11px;
+    color: #f9fafb;
+    min-width: 180px;
+    z-index: 30;
+  }
+  .tooltip-row-improved {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .tooltip-label-improved {
+    opacity: 0.7;
+  }
+  .tooltip-value-improved {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  /* Pływający przycisk otwierający statystyki */
+  #go-fab {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9990;
+    background: #22c55e;
+    color: #052e16;
+    border-radius: 999px;
+    border: none;
+    padding: 10px 18px;
+    font-weight: 700;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 16px 40px rgba(22,163,74,0.7);
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+  }
+  #go-fab:hover {
+    transform: translateY(-1px);
+    background: #16a34a;
+    box-shadow: 0 18px 45px rgba(22,163,74,0.9);
+  }
 </style>
+
 <style>
   /* Details row in Positions (aggregation) */
   #go-tab-overlay .go-detail-row td { padding: 0; }
@@ -7676,47 +7846,62 @@ service cloud.firestore {
 
 <button id="go-fab" title="Statystyki – osobna zakładka">📈 Statystyki</button>
 
+
 <section id="go-tab-overlay" hidden>
+  
   <div id="go-tab-header">
-    <h3 style="margin:0;font-size:18px">📈 Globalne Statystyki Majątku </h3>
-    <div style="display:flex;gap:8px;align-items:center">
-
-
-      <span class="go-switch go-mini"><input type="checkbox" id="go-no-api"> <label for="go-no-api">Bez API (tylko istniejące ceny)</label></span>
-      <button id="go-refresh" title="Odśwież">🔄</button>
-      <button id="go-export-csv" title="Eksport CSV">⬇️ CSV</button>
-      <button id="go-export-json" title="Eksport JSON">⬇️ JSON</button>
-      <button id="go-close">✖ Zamknij</button>
+    <h3>📈 Statystyki globalne</h3>
+    <div class="go-toolbar">
+      <button id="go-refresh" class="go-btn-icon" title="Pobierz nowe ceny">
+        🔄 <span class="go-btn-label">Odśwież</span>
+      </button>
+      <button id="go-export-csv" class="go-btn-icon">⬇️ Eksport CSV</button>
+      <button id="go-export-json" class="go-btn-icon">⬇️ Eksport JSON</button>
+      <button id="go-close" class="go-btn-icon go-btn-close">✖ Zamknij</button>
     </div>
   </div>
 
-
   <div id="go-tab-main">
-    <section class="go-card go-panel">
-      <div class="go-grid" style="align-items:end">
-        <div class="go-col-4">
-          <label>Waluta bazowa</label>
-          <select id="go-base">
-            <option value="PLN">PLN</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-          </select>
-          <div class="go-muted go-mini">Sumy przeliczane bieżącym FX.</div>
-        </div>
-        <div class="go-col-4">
-          <label>Token Finnhub</label>
-          <input id="go-token" placeholder="np. d0b..." />
-          <div class="go-muted go-mini">Jeśli puste — spróbuję z Ustawień.</div>
-        </div>
-        <div class="go-col-4">
-          <label>Odświeżanie (sek.)</label>
-          <input id="go-poll" type="number" min="5" step="1" value="45" />
-        </div>
+
+    <div class="go-config-bar">
+      <div class="go-input-group">
+        <label>Waluta bazowa</label>
+        <select id="go-base">
+          <option value="PLN">PLN (polski złoty)</option>
+          <option value="USD">USD (dolar amerykański)</option>
+          <option value="EUR">EUR (euro)</option>
+        </select>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-        <div class="go-chip">💱 FX: <span id="go-fx" style="font-family:ui-monospace">—</span></div>
-<div class="go-chip">✏️ USD→PLN: <input id="go-fx-usdpln" type="number" min="0" step="0.0001" style="width:110px"> <button id="go-fx-apply" class="go-mini" title="Ustaw kurs ręcznie">Ustaw</button> <button id="go-fx-clear" class="go-mini" title="Wyczyść ręczny kurs">Wyczyść</button></div>
-<script id="go-fx-storage">
+      <div class="go-input-group">
+        <label>Klucz API Finnhub</label>
+        <input id="go-token" type="password" placeholder="domyślny z ustawień..." />
+      </div>
+      <div class="go-input-group">
+        <label>Auto‑odświeżanie (sekundy)</label>
+        <input id="go-poll" type="number" min="5" value="45" />
+      </div>
+      <div class="go-input-group go-inline-checkbox">
+        <input type="checkbox" id="go-no-api">
+        <label for="go-no-api">Nie pobieraj cen z API (tylko zapisane w cache)</label>
+      </div>
+      <div class="go-input-group">
+        <button id="go-save" class="go-btn-icon go-btn-primary">💾 Zapisz ustawienia</button>
+      </div>
+
+      <div class="go-info-row">
+        <span>💱 Bieżący kurs bazowy: <strong id="go-fx" class="go-fx-value">—</strong></span>
+        <span class="go-fx-edit">
+          Ręczny kurs USD/PLN:
+          <input id="go-fx-usdpln" type="number" step="0.0001">
+          <button id="go-fx-apply">Ustaw</button>
+          <button id="go-fx-clear">Wyczyść</button>
+        </span>
+        <span class="go-ttl">Cache wygasa po: <span id="go-ttl">60s</span></span>
+      </div>
+    </div>
+
+    <!-- Skopiowany moduł zapisu ręcznego kursu -->
+    <script id="go-fx-storage">
 (function(){
   const KEY = 'gt_fx_usd_pln';
   function toNum(v){
@@ -7777,106 +7962,146 @@ service cloud.firestore {
 })();
 </script>
 
-        <div class="go-chip">🧾 Źródła: Finnhub Quote, Frankfurter (ECB) / exchangerate.host</div>
-        <div class="go-chip">🧊 Cache TTL: <span id="go-ttl" class="go-mini">60s</span></div>
-        <div style="flex:1"></div>
-        <button id="go-save" style="border:none;border-radius:12px;padding:10px 14px;font-weight:800;background:#22d3ee;color:#001018">💾 Zapisz</button>
+    <div class="go-kpi-grid">
+      <div class="go-kpi-card accent-blue">
+        <div class="go-kpi-label">
+          Majątek netto (equity)
+          <span class="go-badge">suma portfeli</span>
+        </div>
+        <div class="go-kpi-value" id="go-tot-eq">—</div>
+        <div class="go-kpi-sub">
+          <span>Wartość akcji: <strong id="go-tot-hold">—</strong></span>
+        </div>
       </div>
-    </section>
 
-    <section class="go-card go-panel">
-      <h4 style="margin:0 0 8px 0">🔎 Szybkie statystyki (waluta bazowa)</h4>
-      <div class="go-grid">
-        <div class="go-col-3"><div class="go-stat"><div><div class="go-muted">Wartość akcji</div><div id="go-tot-hold" class="go-big">—</div></div><span class="go-tag">live</span></div></div>
-        <div class="go-col-3"><div class="go-stat"><div><div class="go-muted">Gotówka</div><div id="go-tot-cash" class="go-big">—</div></div><span class="go-tag">suma</span></div></div>
-        <div class="go-col-3"><div class="go-stat"><div><div class="go-muted">Suma majątku</div><div id="go-tot-eq" class="go-big">—</div></div><span class="go-tag">akcje+cash</span></div></div>
-        <div class="go-col-3"><div class="go-stat"><div><div class="go-muted">Niezreal. P/L</div><div class="go-big"><span id="go-tot-unr">—</span> <span id="go-tot-unr-pct" class="go-badge">—</span></div><div class="go-muted go-mini">vs koszt własny</div></div><span id="go-day" class="go-tag">Δ dzienny: —</span></div></div>
+      <div class="go-kpi-card accent-purple">
+        <div class="go-kpi-label">
+          Dostępna gotówka
+          <span class="go-badge">gotówka we wszystkich portfelach</span>
+        </div>
+        <div class="go-kpi-value" id="go-tot-cash">—</div>
+        <div class="go-kpi-sub">
+          Środki niewydane na akcje
+        </div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
-        <div class="go-chip">💰 Zreal. P/L (brutto): <span id="go-real-g" style="font-family:ui-monospace">—</span></div>
-        <div class="go-chip">🧾 Podatek: <span id="go-real-tax" style="font-family:ui-monospace">—</span></div>
-        <div class="go-chip">🏁 Zreal. P/L (netto): <span id="go-real-n" style="font-family:ui-monospace">—</span></div>
-        <div class="go-chip">⏱️ Śr. czas (zamknięte): <span id="go-avg-hold" style="font-family:ui-monospace">—</span></div>
-        
-        <div class="go-chip">📈 Śr. zysk % / pozycję (brutto): <span id="go-avg-pct" style="font-family:ui-monospace">—</span></div>
 
-    
-        <div class="go-chip">🎯 TP: <span id="go-tp-count">—</span></div><div class="go-chip"><label for="go-period" class="go-chip-label">📅 Okres</label> <select id="go-period" style="width:auto"><option value="day">Dzień</option><option value="week">Tydzień</option><option value="month">Miesiąc</option><option value="ytd">Ten rok</option><option value="1y">Rok</option><option value="2y">2 lata</option><option value="3y">3 lata</option><option value="all">Cały okres</option></select></div>
-        
-</section>
+      <div class="go-kpi-card accent-green">
+        <div class="go-kpi-label">
+          Niezrealizowany zysk / strata
+          <span class="go-badge">otwarte pozycje</span>
+        </div>
+        <div class="go-kpi-value">
+          <span id="go-tot-unr">—</span>
+        </div>
+        <div class="go-kpi-sub">
+          <span>Stopa zwrotu z otwartych pozycji: <span id="go-tot-unr-pct" class="go-badge">—</span></span>
+          <span class="go-sub-right" id="go-day">Dzisiejsza zmiana: —</span>
+        </div>
+      </div>
 
-<!-- 🧭 [GO] Wkład vs Wartość — wykres liniowy -->
-<style>
-  /* Minimal styles for the GO line chart */
-  #go-line-chart-card{ margin-top: 12px; }
-  .go-legend{ display:flex; gap:16px; align-items:center; margin:6px 0 10px 0; flex-wrap:wrap; }
-  .go-legend .dot{ width:12px; height:12px; border-radius:999px; display:inline-block; vertical-align:middle; margin-right:6px; }
-  .go-legend .blue{ background:#3b82f6; }
-  .go-legend .green{ background:#22c55e; }
-  .go-legend .muted{ opacity:0.65; font-size:12px; }
-  .go-chart-wrap{ width:100%; height:260px; position:relative; border:1px solid #1f2937; border-radius:10px; overflow:hidden; }
-  #go-line-chart{ width:100%; height:100%; display:block; }
-  #go-chart-empty{ padding:12px; font-size:13px; opacity:0.8; }
-  .go-chart-tooltip{
-    position:absolute; pointer-events:none; background:#0b1220; border:1px solid #1f2937;
-    padding:6px 8px; border-radius:8px; font-size:12px; white-space:nowrap;
-    transform:translate(-50%, -120%);
-  }
-  .go-gridline{ opacity:0.15; }
-</style>
-<section class="go-card go-panel" id="go-line-chart-card">
-  <h4 style="margin:0 0 8px 0">📈 Wkład własny vs wartość (zakres czasu jak w filtrze)</h4>
-  <div class="go-legend">
-    <span><span class="dot blue"></span>Wkład własny (wpłaty − wypłaty)</span>
-    <span><span class="dot green"></span>Wartość majątku (akcje + gotówka, wg bieżących cen)</span>
-    <span class="muted">* brak historii cen — linia wartości zmienia się przy transakcjach/zastrzykach gotówki</span>
-  </div>
-  <div id="go-line-chart-info" class="muted" style="margin-bottom:6px">
-    <span id="go-info-blue"></span> • <span id="go-info-green"></span>
-  </div>
-  <div class="go-chart-wrap">
-    <canvas id="go-line-chart"></canvas>
-    <canvas id="go-line-chart-overlay"></canvas>
-
-    <div class="chart-tooltip-improved" id="go-chart-tooltip-imp">
-      <div class="tooltip-row-improved"><span class="tooltip-label-improved">Data:</span><span class="tooltip-value-improved" id="tt-date-imp">-</span></div>
-      <div class="tooltip-row-improved"><span class="tooltip-label-improved">Wkład własny:</span><span class="tooltip-value-improved" id="tt-invested-imp">-</span></div>
-      <div class="tooltip-row-improved"><span class="tooltip-label-improved">Wartość portfela:</span><span class="tooltip-value-improved" id="tt-value-imp">-</span></div>
-      <div class="tooltip-row-improved"><span class="tooltip-label-improved">Zysk/Strata:</span><span class="tooltip-value-improved" id="tt-profit-imp">-</span></div>
-      <div class="tooltip-row-improved"><span class="tooltip-label-improved">ROI (%):</span><span class="tooltip-value-improved" id="tt-roi-imp">-</span></div>
+      <div class="go-kpi-card accent-orange">
+        <div class="go-kpi-label">
+          Zrealizowany wynik (zamknięte transakcje)
+          <select id="go-period">
+            <option value="day">Dzisiaj</option>
+            <option value="week">Ostatni tydzień</option>
+            <option value="month">Ostatni miesiąc</option>
+            <option value="ytd">Od początku roku</option>
+            <option value="1y">Ostatni rok</option>
+            <option value="all" selected>Cały okres</option>
+          </select>
+        </div>
+        <div class="go-kpi-value" id="go-real-n">—</div>
+        <div class="go-kpi-sub">
+          <span>Łączny wynik brutto: <span id="go-real-g">—</span></span>
+          <span>Zapłacony podatek: <span id="go-real-tax">—</span></span>
+        </div>
+      </div>
     </div>
-    
-    <div id="go-chart-empty" style="display:none">Brak danych do wykresu w wybranym okresie.</div>
+
+    <div class="go-summary-strip">
+      <strong>Statystyki zamkniętych transakcji:</strong>
+      <span>Średni czas trzymania pozycji: <strong id="go-avg-hold">—</strong></span>
+      <span>Średni zysk na transakcję (brutto): <strong id="go-avg-pct">—</strong></span>
+      <span>Liczba trafionych celów sprzedaży (TP): <strong id="go-tp-count">—</strong></span>
+    </div>
+
+    <div class="go-section-title">📊 Wykres wartości portfela w czasie</div>
+    <div class="go-chart-container" id="go-line-chart-card">
+      <div class="go-chart-header">
+        <div class="go-legend">
+          <span class="go-legend-entry go-legend-invested">● Wkład własny (wpłaty)</span>
+          <span id="go-info-blue" class="go-legend-value"></span>
+          <span class="go-legend-entry go-legend-equity">● Wartość portfela</span>
+          <span id="go-info-green" class="go-legend-value"></span>
+        </div>
+      </div>
+      <div class="go-chart-wrap">
+        <canvas id="go-line-chart"></canvas>
+        <canvas id="go-line-chart-overlay"></canvas>
+        <div id="go-chart-empty" class="go-chart-empty">Brak danych dla wybranego okresu</div>
+        <div class="chart-tooltip-improved" id="go-chart-tooltip-imp">
+          <div class="tooltip-row-improved"><span class="tooltip-label-improved">Data:</span><span class="tooltip-value-improved" id="tt-date-imp">-</span></div>
+          <div class="tooltip-row-improved"><span class="tooltip-label-improved">Wkład własny:</span><span class="tooltip-value-improved" id="tt-invested-imp">-</span></div>
+          <div class="tooltip-row-improved"><span class="tooltip-label-improved">Wartość portfela:</span><span class="tooltip-value-improved" id="tt-value-imp">-</span></div>
+          <div class="tooltip-row-improved"><span class="tooltip-label-improved">Zysk / strata:</span><span class="tooltip-value-improved" id="tt-profit-imp">-</span></div>
+          <div class="tooltip-row-improved"><span class="tooltip-label-improved">Stopa zwrotu:</span><span class="tooltip-value-improved" id="tt-roi-imp">-</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="go-section-title">📂 Szczegółowe podsumowanie portfeli</div>
+    <div class="go-table-card">
+      <div class="go-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Portfel</th>
+              <th>Waluta portfela</th>
+              <th>Dostępna gotówka</th>
+              <th>Wartość akcji</th>
+              <th>Razem w walucie portfela</th>
+              <th>Razem w walucie bazowej</th>
+              <th>Łączny koszt zakupu</th>
+              <th>Niezrealizowany zysk / strata</th>
+              <th>Niezrealizowany wynik (%)</th>
+              <th>Zrealizowany wynik netto</th>
+            </tr>
+          </thead>
+          <tbody id="go-pf-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="go-section-title go-positions-title">
+      <span>🧩 Pozycje (agregacja tickerów)</span>
+      <input id="go-filter" placeholder="Szukaj po tickerze, np. TSLA, .WA, zysk>0, strata>0, pf:Nazwa portfela">
+    </div>
+    <div class="go-table-card">
+      <div class="go-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Portfel</th>
+              <th>Ilość</th>
+              <th>Średnia cena zakupu</th>
+              <th>Łączny koszt zakupu</th>
+              <th>Aktualny kurs</th>
+              <th>Aktualna wartość</th>
+              <th>Zysk / strata</th>
+              <th>Wynik (%)</th>
+              <th>Dzisiejsza zmiana</th>
+            </tr>
+          </thead>
+          <tbody id="go-pos-body"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 </section>
 
-    <section class="go-card go-panel">
-      <div style="display:flex;align-items:center;gap:8px">
-        <h4 style="margin:0">📂 Portfele</h4><div style="flex:1"></div><span class="go-muted go-mini">Kliknij, by rozwinąć pozycje.</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Portfel</th><th>Waluta</th><th>Gotówka</th><th>Akcje</th><th>Razem (nat.)</th><th>Razem (baz.)</th><th>Koszt własny</th><th>Unreal. P/L</th><th>Unreal. %</th><th>Real. netto</th></tr></thead>
-          <tbody id="go-pf-body"><tr><td colspan="10" class="go-muted">Brak danych…</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="go-card go-panel">
-      <div style="display:flex;gap:8px;align-items:center">
-        <h4 style="margin:0">🧩 Pozycje (agregacja)</h4>
-        <div style="flex:1"></div>
-        <input id="go-filter" placeholder="np. TSLA, .WA, zysk>0, strata>0, pf:Nazwa" style="max-width:320px">
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Ticker</th><th>Portfel</th><th>Ilość</th><th>Śr. koszt</th><th>Koszt własny</th><th>Kurs</th><th>Wartość</th><th>Unreal. P/L</th><th>%</th><th>Δ dzienny</th></tr></thead>
-          <tbody id="go-pos-body"><tr><td colspan="10" class="go-muted">Brak pozycji…</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-</section>
 
 <script>
 (function(){
@@ -8375,31 +8600,128 @@ function paintFx(){
       return `<div class="go-mini go-muted">Błąd generowania szczegółów.</div>`;
     }
   }
-function paintPositions(resList){
-    const tbody = $('#go-pos-body');
-    const filter = ($('#go-filter').value||'').trim().toUpperCase();
-    const rows = buildAllPositions(resList).filter(r=>{
-      if(!filter) return true;
-      const wantGain = filter.includes('ZYSK>0');
-      const wantLoss = filter.includes('STRATA>0');
-      const pfQuery = /PF:([^ ,]+)/.exec(filter);
-      const hasTicker = r.ticker.toUpperCase().includes(filter) || r.pf.toUpperCase().includes(filter);
-      const pfMatch = pfQuery ? r.pf.toUpperCase().includes(pfQuery[1].toUpperCase()) : true;
-      const byGain = wantGain ? (r.pl>0) : true;
-      const byLoss = wantLoss ? (r.pl<0) : true;
-      return (hasTicker || pfMatch) && byGain && byLoss;
-    });
 
-    tbody.innerHTML='';
-    if(!rows.length){ tbody.innerHTML='<tr><td colspan="10" class="go-muted">Brak pozycji…</td></tr>'; return; }
+  // === [GO Positions Aggregation: Sorting + Rendering] ===
+  const GO_SORT_COLS = ['ticker','pf','qty','avg','cost','price','value','pl','pct','dp'];
+  let GO_SORT_KEY = null;
+  let GO_SORT_DIR = 1; // 1 = asc, -1 = desc
+  let GO_POS_ROWS = [];
+  let GO_POS_FILTER = '';
+  let GO_SORT_BOUND = false;
+  let GO_LAST_RESULTS = null;
+
+  function goEnsureSortHeaderBinding(){
+    if(GO_SORT_BOUND) return;
+    GO_SORT_BOUND = true;
+    try{
+      const tbody = document.getElementById('go-pos-body');
+      if(!tbody) return;
+      const table = tbody.closest('table');
+      if(!table) return;
+      const headRow = table.querySelector('thead tr');
+      if(!headRow) return;
+      const ths = Array.from(headRow.querySelectorAll('th'));
+      ths.forEach((th, idx)=>{
+        const key = GO_SORT_COLS[idx];
+        if(!key) return;
+        th.dataset.sortKey = key;
+        th.dataset.label = th.textContent.trim();
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', function(){
+          const k = this.dataset.sortKey;
+          if(!k) return;
+          if(GO_SORT_KEY === k){
+            GO_SORT_DIR = -GO_SORT_DIR;
+          }else{
+            GO_SORT_KEY = k;
+            GO_SORT_DIR = (k==='ticker' || k==='pf') ? 1 : -1;
+          }
+          // update header labels (arrows)
+          ths.forEach(h=>{
+            const base = h.dataset && h.dataset.label ? h.dataset.label : h.textContent.replace(/[▲▼]/g,'').trim();
+            h.dataset.label = base;
+            if(h === th){
+              h.textContent = base + (GO_SORT_DIR>0 ? ' ▲' : ' ▼');
+            }else{
+              h.textContent = base;
+            }
+          });
+          goRepaintPositions();
+        });
+      });
+    }catch(_){}
+  }
+
+  function goCompare(a, b, key, dir){
+    const av = a && a[key];
+    const bv = b && b[key];
+    const na = (av===null || av===undefined || Number.isNaN(av));
+    const nb = (bv===null || bv===undefined || Number.isNaN(bv));
+    if(na && nb) return 0;
+    if(na) return 1; // nulls last
+    if(nb) return -1;
+    if(key==='ticker' || key==='pf'){
+      const sa = String(av).toUpperCase();
+      const sb = String(bv).toUpperCase();
+      if(sa<sb) return -1*dir;
+      if(sa>sb) return 1*dir;
+      return 0;
+    }
+    const numA = Number(av);
+    const numB = Number(bv);
+    if(numA<numB) return -1*dir;
+    if(numA>numB) return 1*dir;
+    return 0;
+  }
+
+  function goGetFilteredSortedRows(){
+    const filter = GO_POS_FILTER || '';
+    let rows = Array.isArray(GO_POS_ROWS) ? GO_POS_ROWS.slice() : [];
+    if(filter){
+      const f = filter.toUpperCase();
+      const wantGain = f.includes('ZYSK>0');
+      const wantLoss = f.includes('STRATA>0');
+      const pfQuery = /PF:([^ ,]+)/.exec(f);
+      rows = rows.filter(r=>{
+        const hasTicker = r.ticker.toUpperCase().includes(f) || r.pf.toUpperCase().includes(f);
+        const pfMatch = pfQuery ? r.pf.toUpperCase().includes(pfQuery[1].toUpperCase()) : true;
+        const byGain = wantGain ? (r.pl>0) : true;
+        const byLoss = wantLoss ? (r.pl<0) : true;
+        return (hasTicker || pfMatch) && byGain && byLoss;
+      });
+    }
+    if(GO_SORT_KEY){
+      rows.sort((a,b)=> goCompare(a,b,GO_SORT_KEY,GO_SORT_DIR));
+    }
+    return rows;
+  }
+
+  function goRepaintPositions(resList){
+    const tbody = document.getElementById('go-pos-body');
+    if(!tbody) return;
+    if(resList){
+      GO_LAST_RESULTS = resList;
+      GO_POS_ROWS = buildAllPositions(resList);
+    }
+    const filterInput = document.getElementById('go-filter');
+    GO_POS_FILTER = (filterInput && filterInput.value || '').trim().toUpperCase();
+    const rows = goGetFilteredSortedRows();
+    tbody.innerHTML = '';
+    if(!rows.length){
+      tbody.innerHTML = '<tr><td colspan="10" class="go-muted">Brak pozycji…</td></tr>';
+      return;
+    }
+    goEnsureSortHeaderBinding();
     for(const r of rows){
-      const plCls = r.pl>0?'go-pos':(r.pl<0?'go-neg':'');
-      const dp = r.dp===null ? '—' : `<span class="go-badge ${r.dp>=0?'go-pos':'go-neg'}">${Number(r.dp).toFixed(2)}%</span>`;
       const tr = document.createElement('tr');
+      const plCls = r.pl>0?'go-pos':(r.pl<0?'go-neg':'');
+      const dp = r.dp===null ? '—' : `
+        <span class="${r.dp>0?'go-pos':'go-neg'}">${r.dp>0?'+':''}${r.dp.toFixed(2)}</span>
+      `;
       tr.innerHTML = `
-        <td class="go-ticker">${escapeHtml(r.ticker)}</td>
-        <td>${escapeHtml(r.pf)}</td>
-        <td>${Number(r.qty).toFixed(2)}</td>
+        <td>${r.ticker}</td>
+        <td>${r.pf}</td>
+        <td>${Number(r.qty).toFixed(4)}</td>
         <td>${fmtMoney(r.avg, r.currency)}</td>
         <td>${fmtMoney(r.cost, r.currency)}</td>
         <td>${r.price===null?'—':Number(r.price).toFixed(2)}</td>
@@ -8409,7 +8731,7 @@ function paintPositions(resList){
         <td>${dp}</td>
       `;
       tbody.appendChild(tr);
-    
+
       // attach expand-on-click for details
       tr.dataset.ticker = r.ticker;
       tr.dataset.pfIdx = String(r.pfIdx ?? -1);
@@ -8423,7 +8745,7 @@ function paintPositions(resList){
         }
         const idx = Number(tr.dataset.pfIdx);
         const ticker = tr.dataset.ticker;
-        const pf = (resList && idx>=0 && resList[idx]) ? resList[idx].pf : null;
+        const pf = (GO_LAST_RESULTS && idx>=0 && GO_LAST_RESULTS[idx]) ? GO_LAST_RESULTS[idx].pf : null;
         const detail = document.createElement('tr');
         detail.className = 'go-detail-row';
         const colSpan = tr.children.length;
@@ -8433,12 +8755,13 @@ function paintPositions(resList){
         tr.after(detail);
       });
     }
-    
   }
 
+  function paintPositions(resList){
+    goRepaintPositions(resList);
+  }
 
-  
-  /* === [GO Extra Stats] avg holding time & avg % profit per position (closed trades) — ROBUST (replay) === */
+/* === [GO Extra Stats] avg holding time & avg % profit per position (closed trades) — ROBUST (replay) === */
   function computeClosedTradeStats(range){
   try{ ST.tpCount = 0; }catch(_){}
     try{
@@ -9042,7 +9365,7 @@ async function refresh(){loadPrefs();
     alert('Zapisano.');
     schedule();
   });
-  $('#go-filter').addEventListener('input', refresh);
+  $('#go-filter').addEventListener('input', ()=>{ try{ goRepaintPositions(); }catch(_){ refresh(); } });
   const periodSel = document.getElementById('go-period');
   if(periodSel){
     periodSel.addEventListener('change', ()=>{
